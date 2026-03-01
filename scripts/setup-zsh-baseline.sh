@@ -5,12 +5,36 @@ exec > >(tee -a /var/log/clone-baseline.log) 2>&1
 
 export DEBIAN_FRONTEND=noninteractive
 
-TARGET_USER="${1:-alexander}"
+detect_cloud_init_user() {
+  local user_data="/var/lib/cloud/instance/user-data.txt"
+  local detected=""
+
+  if [[ -r "$user_data" ]]; then
+    detected="$(awk -F': *' '/^user:/{print $2; exit}' "$user_data" | tr -d "\"'[:space:]")"
+
+    if [[ -z "$detected" ]]; then
+      detected="$(awk '
+        /^users:/ { in_users=1; next }
+        in_users && /^[^[:space:]-]/ { exit }
+        in_users && /^[[:space:]]*-[[:space:]]+/ {
+          gsub(/^[[:space:]]*-[[:space:]]+/, "", $0)
+          gsub(/["'"'"'[:space:]]/, "", $0)
+          if ($0 != "" && $0 != "default") { print $0; exit }
+        }' "$user_data")"
+    fi
+  fi
+
+  printf '%s' "${detected:-alexander}"
+}
+
+TARGET_USER="${1:-$(detect_cloud_init_user)}"
 STARSHIP_VERSION="${STARSHIP_VERSION:-1.24.2}"
 BASELINE_REPO_BASE_URL="${BASELINE_REPO_BASE_URL:-https://raw.githubusercontent.com/Leonderi/proxmox-linux-baseline/main}"
 STARSHIP_URL="https://github.com/starship/starship/releases/download/v${STARSHIP_VERSION}/starship-x86_64-unknown-linux-gnu.tar.gz"
 STARSHIP_TOML_URL="${STARSHIP_TOML_URL:-${BASELINE_REPO_BASE_URL}/config/starship.toml}"
 STARSHIP_ZSH_URL="${STARSHIP_ZSH_URL:-${BASELINE_REPO_BASE_URL}/config/starship.zsh}"
+
+echo "Using TARGET_USER=${TARGET_USER}"
 
 cd /tmp
 rm -f /usr/local/bin/starship
