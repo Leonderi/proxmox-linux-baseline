@@ -27,6 +27,21 @@ detect_cloud_init_user() {
   printf '%s' "${detected:-alexander}"
 }
 
+configure_interactive_user() {
+  local target_user="$1"
+  local home_dir=""
+
+  if ! id "$target_user" >/dev/null 2>&1; then
+    return 0
+  fi
+
+  home_dir="$(getent passwd "$target_user" | cut -d: -f6)"
+  usermod -s /usr/bin/zsh "$target_user"
+  printf '# managed by cloud-init baseline\n' > "${home_dir}/.zshrc"
+  chown "$target_user:$target_user" "${home_dir}/.zshrc"
+  chmod 0644 "${home_dir}/.zshrc"
+}
+
 TARGET_USER="${1:-$(detect_cloud_init_user)}"
 STARSHIP_VERSION="${STARSHIP_VERSION:-1.24.2}"
 BASELINE_REPO_BASE_URL="${BASELINE_REPO_BASE_URL:-https://raw.githubusercontent.com/Leonderi/proxmox-linux-baseline/main}"
@@ -58,6 +73,18 @@ XKBOPTIONS=""
 BACKSPACE="guess"
 EOF_KEYBOARD
 setupcon --force || true
+
+if [[ -f /etc/adduser.conf ]]; then
+  sed -i 's|^DSHELL=.*|DSHELL=/usr/bin/zsh|' /etc/adduser.conf
+fi
+
+if [[ -f /etc/default/useradd ]]; then
+  if grep -q '^SHELL=' /etc/default/useradd; then
+    sed -i 's|^SHELL=.*|SHELL=/usr/bin/zsh|' /etc/default/useradd
+  else
+    printf 'SHELL=/usr/bin/zsh\n' >> /etc/default/useradd
+  fi
+fi
 
 if [[ ! -d /usr/share/oh-my-zsh/.git ]]; then
   rm -rf /usr/share/oh-my-zsh
@@ -93,13 +120,8 @@ setopt APPEND_HISTORY INC_APPEND_HISTORY SHARE_HISTORY HIST_IGNORE_DUPS HIST_IGN
 EOF_ZSHRC
 chmod 0644 /etc/zsh/zshrc
 
-if id "$TARGET_USER" >/dev/null 2>&1; then
-  HOME_DIR="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
-  usermod -s /usr/bin/zsh "$TARGET_USER"
-  printf '# managed by cloud-init baseline\n' > "${HOME_DIR}/.zshrc"
-  chown "$TARGET_USER:$TARGET_USER" "${HOME_DIR}/.zshrc"
-  chmod 0644 "${HOME_DIR}/.zshrc"
-fi
+configure_interactive_user "$TARGET_USER"
+configure_interactive_user root
 
 printf '# managed by cloud-init baseline\n' > /etc/skel/.zshrc
 chmod 0644 /etc/skel/.zshrc
