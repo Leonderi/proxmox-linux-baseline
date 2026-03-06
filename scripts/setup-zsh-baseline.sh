@@ -42,6 +42,395 @@ configure_interactive_user() {
   chmod 0644 "${home_dir}/.zshrc"
 }
 
+install_tk_motd() {
+  install -d -m 0755 /usr/local/lib/tk-motd
+
+  cat >/usr/local/lib/tk-motd/render.sh <<'EOF_MOTD_RENDER'
+#!/usr/bin/env bash
+set -u
+
+if [[ -r /etc/default/tk-motd ]]; then
+  # shellcheck disable=SC1091
+  source /etc/default/tk-motd
+fi
+
+TK_MOTD_BRAND="${TK_MOTD_BRAND:-tk-thran}"
+TK_MOTD_SERVICES="${TK_MOTD_SERVICES:-docker docker.socket containerd traefik saltbox-docker-controller saltbox-docker-controller-helper saltbox-docker-hosts-manager rclone_home rclone_merger}"
+TK_MOTD_MOUNTS="${TK_MOTD_MOUNTS:-/ /boot /boot/efi /mnt/hdd /mnt/nvme}"
+TK_MOTD_DOCKER_MODE="${TK_MOTD_DOCKER_MODE:-summary}"
+TK_MOTD_DOCKER_LIMIT="${TK_MOTD_DOCKER_LIMIT:-10}"
+
+safe_cmd() {
+  "$@" 2>/dev/null || true
+}
+
+docker_safe_cmd() {
+  if command -v timeout >/dev/null 2>&1; then
+    timeout 2s docker "$@" 2>/dev/null || true
+  else
+    docker "$@" 2>/dev/null || true
+  fi
+}
+
+draw_bar() {
+  local percent="$1"
+  local width=50
+  local filled=0
+  local empty=0
+  local bar=""
+
+  if ! [[ "$percent" =~ ^[0-9]+$ ]]; then
+    percent=0
+  fi
+
+  if (( percent < 0 )); then
+    percent=0
+  elif (( percent > 100 )); then
+    percent=100
+  fi
+
+  filled=$((percent * width / 100))
+  empty=$((width - filled))
+
+  if (( filled > 0 )); then
+    bar="$(printf '%*s' "$filled" '' | tr ' ' '#')"
+  fi
+  if (( empty > 0 )); then
+    bar+=$(printf '%*s' "$empty" '' | tr ' ' '-')
+  fi
+
+  printf '%s' "$bar"
+}
+
+format_memory() {
+  local mem_line
+  mem_line="$(safe_cmd free -h | awk '/^Mem:/ {print $3 " used, " $4 " free, " $6 " cached, " $7 " available, " $2 " total"}')"
+  if [[ -n "$mem_line" ]]; then
+    printf '%s' "$mem_line"
+  else
+    printf 'unavailable'
+  fi
+}
+
+format_package_status() {
+  local updates=0
+  local security=0
+  local apt_check=""
+
+  if [[ -x /usr/lib/update-notifier/apt-check ]]; then
+    apt_check="$(safe_cmd /usr/lib/update-notifier/apt-check 2>&1)"
+    updates="${apt_check%%;*}"
+    security="${apt_check##*;}"
+    if ! [[ "$updates" =~ ^[0-9]+$ ]]; then
+      updates=0
+    fi
+    if ! [[ "$security" =~ ^[0-9]+$ ]]; then
+      security=0
+    fi
+    printf '%s updates can be applied immediately (%s security).' "$updates" "$security"
+    return
+  fi
+
+  if command -v apt >/dev/null 2>&1; then
+    updates="$(safe_cmd bash -c "apt list --upgradable 2>/dev/null | awk 'NR>1 {count++} END {print count+0}'")"
+    if ! [[ "$updates" =~ ^[0-9]+$ ]]; then
+      updates=0
+    fi
+    printf '%s updates can be applied immediately.' "$updates"
+    return
+  fi
+
+  printf 'unavailable'
+}
+
+format_last_login() {
+  local login_user
+  local last_login
+
+  login_user="${PAM_USER:-${SUDO_USER:-${USER:-unknown}}}"
+  if [[ "$login_user" == "unknown" ]]; then
+    printf 'unavailable'
+    return
+  fi
+
+  last_login="$(safe_cmd last -w -n 1 "$login_user" | head -n 1)"
+  if [[ -z "$last_login" || "$last_login" == *"wtmp begins"* ]]; then
+    printf 'unavailable'
+    return
+  fi
+
+  printf '%s' "$last_login"
+}
+
+print_disk_usage() {
+  local mount_point
+  local printed=0
+  local df_line=""
+  local size=""
+  local used_percent=""
+  local used_num=0
+
+  printf 'Disk Usage:'
+  for mount_point in $TK_MOTD_MOUNTS; do
+    if [[ ! -d "$mount_point" ]]; then
+      continue
+    fi
+
+    df_line="$(safe_cmd df -hP "$mount_point" | awk 'NR==2 {print $2 "|" $5}')"
+    if [[ -z "$df_line" ]]; then
+      continue
+    fi
+
+    size="${df_line%%|*}"
+    used_percent="${df_line##*|}"
+    used_num="${used_percent%%%}"
+    if ! [[ "$used_num" =~ ^[0-9]+$ ]]; then
+      used_num=0
+    fi
+
+    if (( printed == 0 )); then
+      printf ' %-30s %3s used out of %4s\n' "$mount_point" "$used_percent" "$size"
+    else
+      printf '                 %-30s %3s used out of %4s\n' "$mount_point" "$used_percent" "$size"
+    fi
+    printf '                 %s\n' "$(draw_bar "$used_num")"
+    printed=1
+  done
+
+  if (( printed == 0 )); then
+    printf ' no configured mount points found\n'
+  fi
+}
+
+service_exists() {
+  local unit="$1"
+  systemctl show "$unit" >/dev/null 2>&1
+}
+
+print_service_status() {
+  local service
+  local printed=0
+  local active=""
+  local substate=""
+
+  printf 'Services:'
+  for service in $TK_MOTD_SERVICES; do
+    if ! service_exists "$service"; then
+      continue
+    fi
+
+    active="$(safe_cmd systemctl is-active "$service")"
+    if [[ -z "$active" ]]; then
+      active="unknown"
+    fi
+    substate="$(safe_cmd systemctl show -p SubState --value "$service")"
+    if [[ -z "$substate" ]]; then
+      substate="unknown"
+    fi
+
+    if (( printed == 0 )); then
+      printf ' %-34s %s/%s\n' "$service" "$active" "$substate"
+    else
+      printf '                 %-34s %s/%s\n' "$service" "$active" "$substate"
+    fi
+    printed=1
+  done
+
+  if (( printed == 0 )); then
+    printf ' no configured services found\n'
+  fi
+}
+
+print_docker_status() {
+  local docker_total=0
+  local docker_running=0
+  local docker_attention=0
+  local problem_lines=""
+  local detail_mode="$TK_MOTD_DOCKER_MODE"
+
+  if [[ "$detail_mode" == "off" ]]; then
+    printf 'Docker:          disabled via TK_MOTD_DOCKER_MODE=off\n'
+    return
+  fi
+
+  if ! command -v docker >/dev/null 2>&1; then
+    printf 'Docker:          docker CLI not installed\n'
+    return
+  fi
+
+  if [[ "$(safe_cmd systemctl is-active docker)" != "active" ]]; then
+    printf 'Docker:          docker service is not active\n'
+    return
+  fi
+
+  docker_total="$(docker_safe_cmd ps -a -q | wc -l | tr -d ' ')"
+  docker_running="$(docker_safe_cmd ps -q | wc -l | tr -d ' ')"
+  if ! [[ "$docker_total" =~ ^[0-9]+$ ]]; then
+    docker_total=0
+  fi
+  if ! [[ "$docker_running" =~ ^[0-9]+$ ]]; then
+    docker_running=0
+  fi
+  docker_attention=$((docker_total - docker_running))
+  if (( docker_attention < 0 )); then
+    docker_attention=0
+  fi
+
+  printf 'Docker:          %s containers (%s running, %s need attention)\n' "$docker_total" "$docker_running" "$docker_attention"
+
+  if (( docker_attention == 0 )); then
+    return
+  fi
+
+  problem_lines="$(
+    docker_safe_cmd ps -a --format '{{.Names}}|{{.State}}|{{.Status}}' \
+      | awk -F'|' '$2 != "running" {print $1 ": " $3}' \
+      | head -n "$TK_MOTD_DOCKER_LIMIT"
+  )"
+
+  if [[ -z "$problem_lines" ]]; then
+    return
+  fi
+
+  while IFS= read -r line; do
+    [[ -n "$line" ]] || continue
+    printf '                 %s\n' "$line"
+  done <<<"$problem_lines"
+
+  if [[ "$detail_mode" == "detailed" ]]; then
+    local running_lines
+    running_lines="$(
+      docker_safe_cmd ps --format '{{.Names}}|{{.Status}}' \
+        | head -n "$TK_MOTD_DOCKER_LIMIT"
+    )"
+    if [[ -n "$running_lines" ]]; then
+      printf '                 running:\n'
+      while IFS='|' read -r cname cstatus; do
+        [[ -n "$cname" ]] || continue
+        printf '                 %s: %s\n' "$cname" "$cstatus"
+      done <<<"$running_lines"
+    fi
+  fi
+}
+
+print_traefik_status() {
+  local traefik_state
+
+  if ! command -v docker >/dev/null 2>&1; then
+    printf 'Traefik:         docker unavailable\n'
+    return
+  fi
+
+  traefik_state="$(docker_safe_cmd inspect -f '{{.State.Status}}' traefik)"
+  if [[ -z "$traefik_state" ]]; then
+    printf 'Traefik:         Traefik container not found\n'
+    return
+  fi
+
+  if [[ "$traefik_state" == "running" ]]; then
+    printf 'Traefik:         Traefik container is running\n'
+  else
+    printf 'Traefik:         Traefik container is %s\n' "$traefik_state"
+  fi
+}
+
+print_header() {
+  local brand_upper
+
+  brand_upper="$(printf '%s' "$TK_MOTD_BRAND" | tr '[:lower:]' '[:upper:]')"
+  printf ' _____________________________________________________\n'
+  printf '/                                                     \\\n'
+  printf '|                     %-30s|\n' "$brand_upper"
+  printf '\\_____________________________________________________/\n'
+  printf '\n'
+}
+
+main() {
+  local distro
+  local kernel
+  local uptime_human
+  local load
+  local load_1
+  local load_5
+  local load_15
+  local process_count
+  local cpu_model
+  local cpu_cores
+  local gpu_lines
+  local sessions
+
+  distro="$(safe_cmd awk -F= '$1=="PRETTY_NAME"{gsub(/"/,"",$2); print $2}' /etc/os-release)"
+  kernel="$(safe_cmd uname -r)"
+  uptime_human="$(safe_cmd uptime -p | sed 's/^up //')"
+  load="$(safe_cmd awk '{print $1, $2, $3}' /proc/loadavg)"
+  process_count="$(safe_cmd ps -e --no-headers | wc -l | tr -d ' ')"
+  cpu_model="$(safe_cmd awk -F': ' '/^model name/{print $2; exit}' /proc/cpuinfo)"
+  cpu_cores="$(safe_cmd nproc)"
+  gpu_lines="$(safe_cmd lspci | grep -Ei 'vga|3d|display' | head -n 2)"
+  sessions="$(safe_cmd who | wc -l | tr -d ' ')"
+
+  print_header
+  printf 'Distribution:    %s\n' "${distro:-unavailable}"
+  printf 'Kernel:          %s\n' "${kernel:-unavailable}"
+  printf 'Uptime:          %s\n' "${uptime_human:-unavailable}"
+  if [[ -n "${load:-}" ]]; then
+    read -r load_1 load_5 load_15 <<<"$load"
+    printf 'Load Averages:   1 min: %s | 5 min: %s | 15 min: %s\n' "${load_1:-n/a}" "${load_5:-n/a}" "${load_15:-n/a}"
+  else
+    printf 'Load Averages:   unavailable\n'
+  fi
+  printf 'Processes:       %s running processes\n' "${process_count:-unavailable}"
+  printf 'CPU:             %s (%s cores)\n' "${cpu_model:-unavailable}" "${cpu_cores:-unavailable}"
+  if [[ -n "${gpu_lines:-}" ]]; then
+    printf 'GPU:             %s\n' "$(printf '%s\n' "$gpu_lines" | head -n 1)"
+    if (( $(printf '%s\n' "$gpu_lines" | wc -l | tr -d ' ') > 1 )); then
+      printf '                 %s\n' "$(printf '%s\n' "$gpu_lines" | tail -n +2)"
+    fi
+  else
+    printf 'GPU:             unavailable\n'
+  fi
+  printf 'Memory Usage:    %s\n' "$(format_memory)"
+  printf 'Package Status:  %s\n' "$(format_package_status)"
+  printf 'User Sessions:   %s active sessions\n' "${sessions:-unavailable}"
+  printf 'Last login:      %s\n' "$(format_last_login)"
+  print_disk_usage
+  print_service_status
+  print_docker_status
+  print_traefik_status
+}
+
+main
+EOF_MOTD_RENDER
+  chmod 0755 /usr/local/lib/tk-motd/render.sh
+
+  install -d -m 0755 /etc/update-motd.d
+  cat >/etc/update-motd.d/99-tk-thran-status <<'EOF_MOTD_WRAPPER'
+#!/usr/bin/env bash
+/usr/local/lib/tk-motd/render.sh
+EOF_MOTD_WRAPPER
+  chmod 0755 /etc/update-motd.d/99-tk-thran-status
+
+  if [[ ! -f /etc/default/tk-motd ]]; then
+    cat >/etc/default/tk-motd <<'EOF_MOTD_DEFAULTS'
+# tk-thran MOTD defaults
+TK_MOTD_BRAND="tk-thran"
+TK_MOTD_SERVICES="docker docker.socket containerd traefik saltbox-docker-controller saltbox-docker-controller-helper saltbox-docker-hosts-manager rclone_home rclone_merger"
+TK_MOTD_MOUNTS="/ /boot /boot/efi /mnt/hdd /mnt/nvme"
+TK_MOTD_DOCKER_MODE="summary"
+TK_MOTD_DOCKER_LIMIT="10"
+EOF_MOTD_DEFAULTS
+    chmod 0644 /etc/default/tk-motd
+  fi
+
+  if [[ -d /etc/update-motd.d ]]; then
+    for motd_script in /etc/update-motd.d/*; do
+      [[ -f "$motd_script" ]] || continue
+      chmod 0644 "$motd_script"
+    done
+  fi
+  chmod 0755 /etc/update-motd.d/99-tk-thran-status
+}
+
 TARGET_USER="${1:-$(detect_cloud_init_user)}"
 STARSHIP_VERSION="${STARSHIP_VERSION:-1.24.2}"
 BASELINE_REPO_BASE_URL="${BASELINE_REPO_BASE_URL:-https://raw.githubusercontent.com/Leonderi/proxmox-linux-baseline/main}"
@@ -125,4 +514,5 @@ configure_interactive_user root
 
 printf '# managed by cloud-init baseline\n' > /etc/skel/.zshrc
 chmod 0644 /etc/skel/.zshrc
+install_tk_motd
 systemctl start qemu-guest-agent || true
