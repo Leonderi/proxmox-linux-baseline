@@ -1,6 +1,6 @@
 # Proxmox Linux Baseline
 
-Schlanke, wiederverwendbare Linux-Baseline fuer Ubuntu-VMs aus Proxmox-Templates.
+Schlanke, wiederverwendbare Linux-Baseline fuer Ubuntu-VMs aus Proxmox-Templates und bestehende Ubuntu-VMs.
 
 ## Inhalt
 
@@ -24,6 +24,7 @@ Schlanke, wiederverwendbare Linux-Baseline fuer Ubuntu-VMs aus Proxmox-Templates
 - MOTD-Branding: `tk-thran`
 - MOTD-Modus: `summary` (Docker-Kurzstatus)
 - Docker-Zugriff fuer den Zieluser: wenn die Gruppe `docker` existiert, wird der Zieluser ihr hinzugefuegt
+- Fehlende Basis-Pakete auf Bestands-VMs: `ca-certificates`, `console-setup`, `curl`, `git`, `keyboard-configuration`, `locales`, `tar`, `zsh` werden bei Bedarf vorab per `apt-get` installiert
 
 ## MOTD-Standard
 
@@ -73,3 +74,5 @@ curl -fsSL https://raw.githubusercontent.com/Leonderi/proxmox-linux-baseline/mai
 chmod 0755 /usr/local/sbin/setup-zsh-baseline.sh
 /usr/local/sbin/setup-zsh-baseline.sh alexander
 ```
+
+Auf bestehenden Ubuntu-VMs ohne vorbereitete Template-Pakete ist derselbe Aufruf ausreichend; das Script zieht fehlende Basis-Pakete selbst nach und setzt danach die Baseline durch.

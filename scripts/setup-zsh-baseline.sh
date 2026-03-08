@@ -59,6 +59,43 @@ ensure_group_membership() {
   usermod -aG "$group_name" "$target_user"
 }
 
+ensure_required_packages() {
+  local packages=()
+  local missing=()
+  local pkg=""
+
+  packages=(
+    ca-certificates
+    console-setup
+    curl
+    git
+    keyboard-configuration
+    locales
+    tar
+    zsh
+  )
+
+  for pkg in "${packages[@]}"; do
+    if dpkg -s "$pkg" >/dev/null 2>&1; then
+      continue
+    fi
+    missing+=("$pkg")
+  done
+
+  if ((${#missing[@]} == 0)); then
+    return 0
+  fi
+
+  if ! command -v apt-get >/dev/null 2>&1; then
+    echo "Missing required packages: ${missing[*]}" >&2
+    echo "apt-get is not available on this system." >&2
+    exit 1
+  fi
+
+  apt-get update
+  apt-get install -y --no-install-recommends "${missing[@]}"
+}
+
 install_tk_motd() {
   install -d -m 0755 /usr/local/lib/tk-motd
 
@@ -683,6 +720,8 @@ STARSHIP_TOML_URL="${STARSHIP_TOML_URL:-${BASELINE_REPO_BASE_URL}/config/starshi
 STARSHIP_ZSH_URL="${STARSHIP_ZSH_URL:-${BASELINE_REPO_BASE_URL}/config/starship.zsh}"
 
 echo "Using TARGET_USER=${TARGET_USER}"
+
+ensure_required_packages
 
 cd /tmp
 rm -f /usr/local/bin/starship
