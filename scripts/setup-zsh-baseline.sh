@@ -94,6 +94,7 @@ setup_colors() {
       C_HEADER_FRAME=""
       C_HEADER_TEXT=""
       C_HEADER_DIM=""
+      C_HEADER_BOLD=""
       return
     fi
   
@@ -105,9 +106,10 @@ setup_colors() {
   C_WARN=$'\033[38;5;180m'
   C_BAD=$'\033[38;5;174m'
   C_DIM=$'\033[0;90m'
-  C_HEADER_FRAME=$'\033[38;5;99m'
+  C_HEADER_FRAME=$'\033[38;5;91m'
   C_HEADER_TEXT=$'\033[38;5;245m'
   C_HEADER_DIM=$'\033[38;5;240m'
+  C_HEADER_BOLD=$'\033[1m'
 }
 
 color_for_percent() {
@@ -165,6 +167,16 @@ get_primary_ip() {
   fi
 
   printf '%s' 'unavailable'
+}
+
+print_header_meta() {
+  local label="$1"
+  local value="$2"
+
+  printf '  %b│%b %b%b%-6s%b  %b%s%b\n' \
+    "$C_HEADER_FRAME" "$C_RESET" \
+    "$C_HEADER_BOLD" "$C_HEADER_TEXT" "$label" "$C_RESET" \
+    "$C_HEADER_DIM" "${value:-unavailable}" "$C_RESET"
 }
 
 docker_safe_cmd() {
@@ -543,14 +555,14 @@ print_header() {
     printf '%b\\\\-------------------------------------------------------/%b\n' "$C_DIM" "$C_RESET"
   fi
   printf '\n'
-  printf '  %b│%b %bHost%b    %b%s%b\n' "$C_HEADER_FRAME" "$C_RESET" "$C_HEADER_TEXT" "$C_RESET" "$C_HEADER_DIM" "${host_name:-unavailable}" "$C_RESET"
-  printf '  %b│%b %bIP%b      %b%s%b\n' "$C_HEADER_FRAME" "$C_RESET" "$C_HEADER_TEXT" "$C_RESET" "$C_HEADER_DIM" "${primary_ip:-unavailable}" "$C_RESET"
-  printf '  %b│%b %bKernel%b  %b%s%b\n' "$C_HEADER_FRAME" "$C_RESET" "$C_HEADER_TEXT" "$C_RESET" "$C_HEADER_DIM" "${kernel:-unavailable}" "$C_RESET"
-  printf '  %b│%b %bUptime%b  %b%s%b\n' "$C_HEADER_FRAME" "$C_RESET" "$C_HEADER_TEXT" "$C_RESET" "$C_HEADER_DIM" "${uptime_human:-unavailable}" "$C_RESET"
+  print_header_meta 'Host' "${host_name:-unavailable}"
+  print_header_meta 'IP' "${primary_ip:-unavailable}"
+  print_header_meta 'Kernel' "${kernel:-unavailable}"
+  print_header_meta 'Uptime' "${uptime_human:-unavailable}"
   if [[ -n "${load_1:-}" || -n "${load_5:-}" || -n "${load_15:-}" ]]; then
-    printf '  %b│%b %bLoad%b    %b%s %s %s%b\n' "$C_HEADER_FRAME" "$C_RESET" "$C_HEADER_TEXT" "$C_RESET" "$C_HEADER_DIM" "${load_1:-n/a}" "${load_5:-n/a}" "${load_15:-n/a}" "$C_RESET"
+    print_header_meta 'Load' "${load_1:-n/a} ${load_5:-n/a} ${load_15:-n/a}"
   else
-    printf '  %b│%b %bLoad%b    %b%s%b\n' "$C_HEADER_FRAME" "$C_RESET" "$C_HEADER_TEXT" "$C_RESET" "$C_HEADER_DIM" 'unavailable' "$C_RESET"
+    print_header_meta 'Load' 'unavailable'
   fi
   printf '\n'
 }
