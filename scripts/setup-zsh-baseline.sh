@@ -55,13 +55,58 @@ if [[ -r /etc/default/tk-motd ]]; then
 fi
 
 TK_MOTD_BRAND="${TK_MOTD_BRAND:-tk-thran}"
-TK_MOTD_SERVICES="${TK_MOTD_SERVICES:-docker docker.socket containerd traefik saltbox-docker-controller saltbox-docker-controller-helper saltbox-docker-hosts-manager rclone_home rclone_merger}"
+TK_MOTD_SERVICES="${TK_MOTD_SERVICES:-qemu-guest-agent ssh systemd-resolved systemd-timesyncd cron docker fail2ban}"
 TK_MOTD_MOUNTS="${TK_MOTD_MOUNTS:-/ /boot /boot/efi /mnt/hdd /mnt/nvme}"
 TK_MOTD_DOCKER_MODE="${TK_MOTD_DOCKER_MODE:-summary}"
 TK_MOTD_DOCKER_LIMIT="${TK_MOTD_DOCKER_LIMIT:-10}"
 
 safe_cmd() {
   "$@" 2>/dev/null || true
+}
+
+setup_colors() {
+  if [[ -n "${NO_COLOR:-}" || "${TERM:-}" == "dumb" ]]; then
+    C_RESET=""
+    C_LABEL=""
+    C_VALUE=""
+    C_ACCENT=""
+    C_GOOD=""
+    C_WARN=""
+    C_BAD=""
+    C_DIM=""
+    return
+  fi
+
+  C_RESET=$'\033[0m'
+  C_LABEL=$'\033[1;95m'
+  C_VALUE=$'\033[1;97m'
+  C_ACCENT=$'\033[1;96m'
+  C_GOOD=$'\033[1;92m'
+  C_WARN=$'\033[1;93m'
+  C_BAD=$'\033[1;91m'
+  C_DIM=$'\033[0;90m'
+}
+
+color_for_percent() {
+  local percent="${1:-0}"
+
+  if ! [[ "$percent" =~ ^[0-9]+$ ]]; then
+    percent=0
+  fi
+
+  if (( percent >= 90 )); then
+    printf '%s' "$C_BAD"
+  elif (( percent >= 75 )); then
+    printf '%s' "$C_WARN"
+  else
+    printf '%s' "$C_GOOD"
+  fi
+}
+
+print_kv() {
+  local label="$1"
+  local value="$2"
+  printf '%b%-16s%b %b%s%b\n' "$C_LABEL" "${label}:" "$C_RESET" "$C_VALUE" "$value" "$C_RESET"
 }
 
 docker_safe_cmd() {
@@ -74,10 +119,15 @@ docker_safe_cmd() {
 
 draw_bar() {
   local percent="$1"
-  local width=50
+  local width=32
   local filled=0
   local empty=0
-  local bar=""
+  local percent_color=""
+  local filled_char="█"
+  local empty_char="░"
+  local filled_bar=""
+  local empty_bar=""
+  local i=0
 
   if ! [[ "$percent" =~ ^[0-9]+$ ]]; then
     percent=0
@@ -91,15 +141,20 @@ draw_bar() {
 
   filled=$((percent * width / 100))
   empty=$((width - filled))
+  percent_color="$(color_for_percent "$percent")"
 
   if (( filled > 0 )); then
-    bar="$(printf '%*s' "$filled" '' | tr ' ' '#')"
+    for ((i = 0; i < filled; i++)); do
+      filled_bar+="$filled_char"
+    done
   fi
   if (( empty > 0 )); then
-    bar+=$(printf '%*s' "$empty" '' | tr ' ' '-')
+    for ((i = 0; i < empty; i++)); do
+      empty_bar+="$empty_char"
+    done
   fi
 
-  printf '%s' "$bar"
+  printf '%b%s%b%b%s%b' "$percent_color" "$filled_bar" "$C_RESET" "$C_DIM" "$empty_bar" "$C_RESET"
 }
 
 format_memory() {
@@ -170,7 +225,7 @@ print_disk_usage() {
   local used_percent=""
   local used_num=0
 
-  printf 'Disk Usage:'
+  printf '%b%-16s%b ' "$C_LABEL" 'Disk Usage:' "$C_RESET"
   for mount_point in $TK_MOTD_MOUNTS; do
     if [[ ! -d "$mount_point" ]]; then
       continue
@@ -189,16 +244,16 @@ print_disk_usage() {
     fi
 
     if (( printed == 0 )); then
-      printf ' %-30s %3s used out of %4s\n' "$mount_point" "$used_percent" "$size"
+      printf '%b%-16s%b %b%2s%b used out of %b%s%b\n' "$C_VALUE" "$mount_point" "$C_RESET" "$(color_for_percent "$used_num")" "$used_percent" "$C_RESET" "$C_ACCENT" "$size" "$C_RESET"
     else
-      printf '                 %-30s %3s used out of %4s\n' "$mount_point" "$used_percent" "$size"
+      printf '%16s %b%-16s%b %b%2s%b used out of %b%s%b\n' '' "$C_VALUE" "$mount_point" "$C_RESET" "$(color_for_percent "$used_num")" "$used_percent" "$C_RESET" "$C_ACCENT" "$size" "$C_RESET"
     fi
-    printf '                 %s\n' "$(draw_bar "$used_num")"
+    printf '%16s %s\n' '' "$(draw_bar "$used_num")"
     printed=1
   done
 
   if (( printed == 0 )); then
-    printf ' no configured mount points found\n'
+    printf '%bno configured mount points found%b\n' "$C_DIM" "$C_RESET"
   fi
 }
 
@@ -212,8 +267,10 @@ print_service_status() {
   local printed=0
   local active=""
   local substate=""
+  local active_color=""
+  local unit_state=""
 
-  printf 'Services:'
+  printf '%b%-16s%b ' "$C_LABEL" 'Services:' "$C_RESET"
   for service in $TK_MOTD_SERVICES; do
     if ! service_exists "$service"; then
       continue
@@ -227,17 +284,24 @@ print_service_status() {
     if [[ -z "$substate" ]]; then
       substate="unknown"
     fi
+    unit_state="${active}/${substate}"
+    case "$active" in
+      active) active_color="$C_GOOD" ;;
+      inactive) active_color="$C_DIM" ;;
+      failed) active_color="$C_BAD" ;;
+      *) active_color="$C_WARN" ;;
+    esac
 
     if (( printed == 0 )); then
-      printf ' %-34s %s/%s\n' "$service" "$active" "$substate"
+      printf '%b%-34s%b %b%s%b\n' "$C_VALUE" "$service" "$C_RESET" "$active_color" "$unit_state" "$C_RESET"
     else
-      printf '                 %-34s %s/%s\n' "$service" "$active" "$substate"
+      printf '%16s %b%-34s%b %b%s%b\n' '' "$C_VALUE" "$service" "$C_RESET" "$active_color" "$unit_state" "$C_RESET"
     fi
     printed=1
   done
 
   if (( printed == 0 )); then
-    printf ' no configured services found\n'
+    printf '%bno configured services found%b\n' "$C_DIM" "$C_RESET"
   fi
 }
 
@@ -276,7 +340,11 @@ print_docker_status() {
     docker_attention=0
   fi
 
-  printf 'Docker:          %s containers (%s running, %s need attention)\n' "$docker_total" "$docker_running" "$docker_attention"
+  printf '%b%-16s%b %b%s%b containers (%b%s running%b, %b%s need attention%b)\n' \
+    "$C_LABEL" 'Docker:' "$C_RESET" \
+    "$C_VALUE" "$docker_total" "$C_RESET" \
+    "$C_GOOD" "$docker_running" "$C_RESET" \
+    "$([[ "$docker_attention" =~ ^0+$ ]] && printf '%s' "$C_GOOD" || printf '%s' "$C_WARN")" "$docker_attention" "$C_RESET"
 
   if (( docker_attention == 0 )); then
     return
@@ -294,7 +362,7 @@ print_docker_status() {
 
   while IFS= read -r line; do
     [[ -n "$line" ]] || continue
-    printf '                 %s\n' "$line"
+    printf '%16s %b%s%b\n' '' "$C_WARN" "$line" "$C_RESET"
   done <<<"$problem_lines"
 
   if [[ "$detail_mode" == "detailed" ]]; then
@@ -304,10 +372,10 @@ print_docker_status() {
         | head -n "$TK_MOTD_DOCKER_LIMIT"
     )"
     if [[ -n "$running_lines" ]]; then
-      printf '                 running:\n'
+      printf '%16s %brunning:%b\n' '' "$C_GOOD" "$C_RESET"
       while IFS='|' read -r cname cstatus; do
         [[ -n "$cname" ]] || continue
-        printf '                 %s: %s\n' "$cname" "$cstatus"
+        printf '%16s %b%s%b: %s\n' '' "$C_VALUE" "$cname" "$C_RESET" "$cstatus"
       done <<<"$running_lines"
     fi
   fi
@@ -317,31 +385,36 @@ print_traefik_status() {
   local traefik_state
 
   if ! command -v docker >/dev/null 2>&1; then
-    printf 'Traefik:         docker unavailable\n'
+    print_kv 'Traefik' 'docker unavailable'
     return
   fi
 
   traefik_state="$(docker_safe_cmd inspect -f '{{.State.Status}}' traefik)"
   if [[ -z "$traefik_state" ]]; then
-    printf 'Traefik:         Traefik container not found\n'
+    print_kv 'Traefik' 'Traefik container not found'
     return
   fi
 
   if [[ "$traefik_state" == "running" ]]; then
-    printf 'Traefik:         Traefik container is running\n'
+    printf '%b%-16s%b %bTraefik container is running%b\n' "$C_LABEL" 'Traefik:' "$C_RESET" "$C_GOOD" "$C_RESET"
   else
-    printf 'Traefik:         Traefik container is %s\n' "$traefik_state"
+    printf '%b%-16s%b %bTraefik container is %s%b\n' "$C_LABEL" 'Traefik:' "$C_RESET" "$C_WARN" "$traefik_state" "$C_RESET"
   fi
 }
 
 print_header() {
   local brand_upper
+  local brand_pad=0
 
   brand_upper="$(printf '%s' "$TK_MOTD_BRAND" | tr '[:lower:]' '[:upper:]')"
-  printf ' _____________________________________________________\n'
-  printf '/                                                     \\\n'
-  printf '|                     %-30s|\n' "$brand_upper"
-  printf '\\_____________________________________________________/\n'
+  brand_pad=$(( (51 - ${#brand_upper}) / 2 ))
+  if (( brand_pad < 0 )); then
+    brand_pad=0
+  fi
+
+  printf '%b/-------------------------------------------------------\\\\%b\n' "$C_DIM" "$C_RESET"
+  printf '%b|%b%*s%b%s%b%*s%b|\n' "$C_DIM" "$C_RESET" "$brand_pad" '' "$C_ACCENT" "$brand_upper" "$C_RESET" $((51 - brand_pad - ${#brand_upper})) '' "$C_DIM"
+  printf '%b\\\\-------------------------------------------------------/%b\n' "$C_RESET" "$C_RESET"
   printf '\n'
 }
 
@@ -358,7 +431,10 @@ main() {
   local cpu_cores
   local gpu_lines
   local sessions
+  local package_status
+  local memory_line
 
+  setup_colors
   distro="$(safe_cmd awk -F= '$1=="PRETTY_NAME"{gsub(/"/,"",$2); print $2}' /etc/os-release)"
   kernel="$(safe_cmd uname -r)"
   uptime_human="$(safe_cmd uptime -p | sed 's/^up //')"
@@ -368,31 +444,37 @@ main() {
   cpu_cores="$(safe_cmd nproc)"
   gpu_lines="$(safe_cmd lspci | grep -Ei 'vga|3d|display' | head -n 2)"
   sessions="$(safe_cmd who | wc -l | tr -d ' ')"
+  package_status="$(format_package_status)"
+  memory_line="$(format_memory)"
 
   print_header
-  printf 'Distribution:    %s\n' "${distro:-unavailable}"
-  printf 'Kernel:          %s\n' "${kernel:-unavailable}"
-  printf 'Uptime:          %s\n' "${uptime_human:-unavailable}"
+  print_kv 'Distribution' "${distro:-unavailable}"
+  print_kv 'Kernel' "${kernel:-unavailable}"
+  print_kv 'Uptime' "${uptime_human:-unavailable}"
   if [[ -n "${load:-}" ]]; then
     read -r load_1 load_5 load_15 <<<"$load"
-    printf 'Load Averages:   1 min: %s | 5 min: %s | 15 min: %s\n' "${load_1:-n/a}" "${load_5:-n/a}" "${load_15:-n/a}"
+    printf '%b%-16s%b 1 min: %b%s%b | 5 min: %b%s%b | 15 min: %b%s%b\n' \
+      "$C_LABEL" 'Load Averages:' "$C_RESET" \
+      "$C_ACCENT" "${load_1:-n/a}" "$C_RESET" \
+      "$C_ACCENT" "${load_5:-n/a}" "$C_RESET" \
+      "$C_ACCENT" "${load_15:-n/a}" "$C_RESET"
   else
-    printf 'Load Averages:   unavailable\n'
+    print_kv 'Load Averages' 'unavailable'
   fi
-  printf 'Processes:       %s running processes\n' "${process_count:-unavailable}"
-  printf 'CPU:             %s (%s cores)\n' "${cpu_model:-unavailable}" "${cpu_cores:-unavailable}"
+  printf '%b%-16s%b %b%s%b running processes\n' "$C_LABEL" 'Processes:' "$C_RESET" "$C_ACCENT" "${process_count:-unavailable}" "$C_RESET"
+  printf '%b%-16s%b %b%s%b (%b%s cores%b)\n' "$C_LABEL" 'CPU:' "$C_RESET" "$C_VALUE" "${cpu_model:-unavailable}" "$C_RESET" "$C_ACCENT" "${cpu_cores:-unavailable}" "$C_RESET"
   if [[ -n "${gpu_lines:-}" ]]; then
-    printf 'GPU:             %s\n' "$(printf '%s\n' "$gpu_lines" | head -n 1)"
+    printf '%b%-16s%b %b%s%b\n' "$C_LABEL" 'GPU:' "$C_RESET" "$C_VALUE" "$(printf '%s\n' "$gpu_lines" | head -n 1)" "$C_RESET"
     if (( $(printf '%s\n' "$gpu_lines" | wc -l | tr -d ' ') > 1 )); then
-      printf '                 %s\n' "$(printf '%s\n' "$gpu_lines" | tail -n +2)"
+      printf '%16s %b%s%b\n' '' "$C_VALUE" "$(printf '%s\n' "$gpu_lines" | tail -n +2)" "$C_RESET"
     fi
   else
-    printf 'GPU:             unavailable\n'
+    print_kv 'GPU' 'unavailable'
   fi
-  printf 'Memory Usage:    %s\n' "$(format_memory)"
-  printf 'Package Status:  %s\n' "$(format_package_status)"
-  printf 'User Sessions:   %s active sessions\n' "${sessions:-unavailable}"
-  printf 'Last login:      %s\n' "$(format_last_login)"
+  print_kv 'Memory Usage' "$memory_line"
+  print_kv 'Package Status' "$package_status"
+  printf '%b%-16s%b %b%s%b active sessions\n' "$C_LABEL" 'User Sessions:' "$C_RESET" "$C_ACCENT" "${sessions:-unavailable}" "$C_RESET"
+  print_kv 'Last login' "$(format_last_login)"
   print_disk_usage
   print_service_status
   print_docker_status
@@ -414,7 +496,7 @@ EOF_MOTD_WRAPPER
     cat >/etc/default/tk-motd <<'EOF_MOTD_DEFAULTS'
 # tk-thran MOTD defaults
 TK_MOTD_BRAND="tk-thran"
-TK_MOTD_SERVICES="docker docker.socket containerd traefik saltbox-docker-controller saltbox-docker-controller-helper saltbox-docker-hosts-manager rclone_home rclone_merger"
+TK_MOTD_SERVICES="qemu-guest-agent ssh systemd-resolved systemd-timesyncd cron docker fail2ban"
 TK_MOTD_MOUNTS="/ /boot /boot/efi /mnt/hdd /mnt/nvme"
 TK_MOTD_DOCKER_MODE="summary"
 TK_MOTD_DOCKER_LIMIT="10"

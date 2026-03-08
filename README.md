@@ -37,6 +37,8 @@ Verhalten:
 - Ubuntu-Default-Skripte unter `/etc/update-motd.d/` werden deaktiviert.
 - Nur `99-tk-thran-status` bleibt aktiv.
 - `/etc/default/tk-motd` wird nur beim ersten Lauf angelegt und spaetere manuelle Overrides bleiben erhalten.
+- Die Ausgabe ist farbiger und kompakter an den Saltbox-Stil angelehnt.
+- Disk-Balken werden mit vollen Unicode-Bloecken und farbigen Schwellenwerten gerendert.
 
 Konfigurationskeys in `/etc/default/tk-motd`:
 
@@ -45,6 +47,15 @@ Konfigurationskeys in `/etc/default/tk-motd`:
 - `TK_MOTD_MOUNTS` (space-separierte Mountpoints)
 - `TK_MOTD_DOCKER_MODE` (`off|summary|detailed`)
 - `TK_MOTD_DOCKER_LIMIT` (Limit fuer gelistete Container)
+
+Default fuer `TK_MOTD_SERVICES`:
+
+- `qemu-guest-agent ssh systemd-resolved systemd-timesyncd cron docker fail2ban`
+
+Hinweis:
+
+- Saltbox-spezifische Units wie `saltbox-docker-controller` oder `rclone_merger` werden bewusst nicht mehr als globale Baseline-Defaults gesetzt.
+- Fuer Saltbox oder andere Sonderrollen wird die Service-Liste pro VM ueber `/etc/default/tk-motd` ueberschrieben.
 
 ## Verwendung
 
