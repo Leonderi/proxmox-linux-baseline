@@ -42,7 +42,7 @@ Verhalten:
 - Der Wrapper unter `/etc/update-motd.d/99-tk-thran-status` bleibt nur als Stub erhalten und ist standardmaessig nicht ausfuehrbar.
 - `/etc/default/tk-motd` wird nur beim ersten Lauf angelegt und spaetere manuelle Overrides bleiben erhalten.
 - Die Ausgabe ist farbiger und kompakter an den Saltbox-Stil angelehnt.
-- Der Header wird fuer `tk-thran` als ASCII-Art gerendert.
+- Der Header wird fuer `tk-thran` als ASCII-Art im Stil des vorgeschlagenen MOTD-Banners gerendert und zeigt direkt `Host`, `IP`, `Kernel`, `Uptime` und `Load`.
 - Disk-Balken werden breiter mit vollen Unicode-Bloecken und ruhigeren Farbschwellen gerendert.
 - `setupcon --force` wird bewusst nicht mehr im Setup-Lauf erzwungen, um harmlose `dead_belowmacron`-Warnings aus `console-setup` zu vermeiden.
 

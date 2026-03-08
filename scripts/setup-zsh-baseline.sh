@@ -82,18 +82,21 @@ safe_cmd() {
 }
 
 setup_colors() {
-  if [[ -n "${NO_COLOR:-}" || "${TERM:-}" == "dumb" ]]; then
-    C_RESET=""
-    C_LABEL=""
-    C_VALUE=""
-    C_ACCENT=""
-    C_GOOD=""
-    C_WARN=""
-    C_BAD=""
-    C_DIM=""
-    return
-  fi
-
+    if [[ -n "${NO_COLOR:-}" || "${TERM:-}" == "dumb" ]]; then
+      C_RESET=""
+      C_LABEL=""
+      C_VALUE=""
+      C_ACCENT=""
+      C_GOOD=""
+      C_WARN=""
+      C_BAD=""
+      C_DIM=""
+      C_HEADER_FRAME=""
+      C_HEADER_TEXT=""
+      C_HEADER_DIM=""
+      return
+    fi
+  
   C_RESET=$'\033[0m'
   C_LABEL=$'\033[38;5;182m'
   C_VALUE=$'\033[0;97m'
@@ -102,6 +105,9 @@ setup_colors() {
   C_WARN=$'\033[38;5;180m'
   C_BAD=$'\033[38;5;174m'
   C_DIM=$'\033[0;90m'
+  C_HEADER_FRAME=$'\033[38;5;99m'
+  C_HEADER_TEXT=$'\033[38;5;245m'
+  C_HEADER_DIM=$'\033[38;5;240m'
 }
 
 color_for_percent() {
@@ -124,6 +130,41 @@ print_kv() {
   local label="$1"
   local value="$2"
   printf '%b%-16s%b %b%s%b\n' "$C_LABEL" "${label}:" "$C_RESET" "$C_VALUE" "$value" "$C_RESET"
+}
+
+print_ascii_header_line() {
+  local line="$1"
+  local out=""
+  local i=0
+  local len=${#line}
+  local ch=""
+
+  while (( i < len )); do
+    ch="${line:$i:1}"
+    case "$ch" in
+      '/'|'\\'|'_'|'|')
+        out+="${C_HEADER_FRAME}${ch}${C_HEADER_TEXT}"
+        ;;
+      *)
+        out+="$ch"
+        ;;
+    esac
+    ((i++))
+  done
+
+  printf '%b%b%b\n' "$C_HEADER_TEXT" "$out" "$C_RESET"
+}
+
+get_primary_ip() {
+  local detected_ip=""
+
+  detected_ip="$(safe_cmd ip route get 1.1.1.1 | awk '{print $7; exit}')"
+  if [[ -n "$detected_ip" ]]; then
+    printf '%s' "$detected_ip"
+    return
+  fi
+
+  printf '%s' 'unavailable'
 }
 
 docker_safe_cmd() {
@@ -460,6 +501,11 @@ print_traefik_status() {
 }
 
 print_header() {
+  local kernel="$1"
+  local uptime_human="$2"
+  local load_1="$3"
+  local load_5="$4"
+  local load_15="$5"
   local brand_upper
   local brand_raw
   local line_one=""
@@ -468,26 +514,43 @@ print_header() {
   local line_four=""
   local line_five=""
   local line_six=""
+  local host_name=""
+  local primary_ip=""
 
   brand_raw="$(printf '%s' "$TK_MOTD_BRAND")"
   brand_upper="$(printf '%s' "$brand_raw" | tr '[:lower:]' '[:upper:]')"
+  host_name="$(safe_cmd hostname -f)"
+  if [[ -z "$host_name" ]]; then
+    host_name="$(safe_cmd hostname)"
+  fi
+  primary_ip="$(get_primary_ip)"
+
   if [[ "$brand_upper" == "TK-THRAN" ]]; then
-    line_one='  _   _      _   _                               '
-    line_two=' | |_| | __ | |_| |__  _ __ __ _ _ __           '
-    line_three=' | __| |/ / | __|  _ \|  __/ _  |  _ \          '
-    line_four=' | |_|   <  | |_| | | | | | (_| | | | |         '
-    line_five='  \__|_|\_\  \__|_| |_|_|  \__,_|_| |_|         '
-    line_six='                                                '
-    printf '%b%s%b\n' "$C_DIM" "$line_one" "$C_RESET"
-    printf '%b%s%b\n' "$C_DIM" "$line_two" "$C_RESET"
-    printf '%b%s%b\n' "$C_ACCENT" "$line_three" "$C_RESET"
-    printf '%b%s%b\n' "$C_ACCENT" "$line_four" "$C_RESET"
-    printf '%b%s%b\n' "$C_ACCENT" "$line_five" "$C_RESET"
-    printf '%b%s%b\n' "$C_DIM" "$line_six" "$C_RESET"
+    line_one='   __     __            __     __'
+    line_two='  / /_   / /__         / /_   / /_    _____  ____ _   ____'
+    line_three=' / __/  / //_/ ______ / __/  / __ \  / ___/ / __ `/  / __ \'
+    line_four='/ /_   / ,<   /_____// /_   / / / / / /    / /_/ /  / / / /'
+    line_five='\__/  /_/|_|         \__/  /_/ /_/ /_/     \__,_/  /_/ /_/'
+    line_six=''
+    print_ascii_header_line "$line_one"
+    print_ascii_header_line "$line_two"
+    print_ascii_header_line "$line_three"
+    print_ascii_header_line "$line_four"
+    print_ascii_header_line "$line_five"
   else
     printf '%b/-------------------------------------------------------\\\\%b\n' "$C_DIM" "$C_RESET"
     printf '%b|%b %-53s %b|\n' "$C_DIM" "$C_RESET" "$brand_upper" "$C_DIM"
     printf '%b\\\\-------------------------------------------------------/%b\n' "$C_DIM" "$C_RESET"
+  fi
+  printf '\n'
+  printf '  %b│%b %bHost%b    %b%s%b\n' "$C_HEADER_FRAME" "$C_RESET" "$C_HEADER_TEXT" "$C_RESET" "$C_HEADER_DIM" "${host_name:-unavailable}" "$C_RESET"
+  printf '  %b│%b %bIP%b      %b%s%b\n' "$C_HEADER_FRAME" "$C_RESET" "$C_HEADER_TEXT" "$C_RESET" "$C_HEADER_DIM" "${primary_ip:-unavailable}" "$C_RESET"
+  printf '  %b│%b %bKernel%b  %b%s%b\n' "$C_HEADER_FRAME" "$C_RESET" "$C_HEADER_TEXT" "$C_RESET" "$C_HEADER_DIM" "${kernel:-unavailable}" "$C_RESET"
+  printf '  %b│%b %bUptime%b  %b%s%b\n' "$C_HEADER_FRAME" "$C_RESET" "$C_HEADER_TEXT" "$C_RESET" "$C_HEADER_DIM" "${uptime_human:-unavailable}" "$C_RESET"
+  if [[ -n "${load_1:-}" || -n "${load_5:-}" || -n "${load_15:-}" ]]; then
+    printf '  %b│%b %bLoad%b    %b%s %s %s%b\n' "$C_HEADER_FRAME" "$C_RESET" "$C_HEADER_TEXT" "$C_RESET" "$C_HEADER_DIM" "${load_1:-n/a}" "${load_5:-n/a}" "${load_15:-n/a}" "$C_RESET"
+  else
+    printf '  %b│%b %bLoad%b    %b%s%b\n' "$C_HEADER_FRAME" "$C_RESET" "$C_HEADER_TEXT" "$C_RESET" "$C_HEADER_DIM" 'unavailable' "$C_RESET"
   fi
   printf '\n'
 }
@@ -524,20 +587,11 @@ main() {
   memory_line="$(format_memory)"
   current_user="${SUDO_USER:-${USER:-unknown}}"
 
-  print_header
-  print_kv 'Distribution' "${distro:-unavailable}"
-  print_kv 'Kernel' "${kernel:-unavailable}"
-  print_kv 'Uptime' "${uptime_human:-unavailable}"
   if [[ -n "${load:-}" ]]; then
     read -r load_1 load_5 load_15 <<<"$load"
-    printf '%b%-16s%b 1 min: %b%s%b | 5 min: %b%s%b | 15 min: %b%s%b\n' \
-      "$C_LABEL" 'Load Averages:' "$C_RESET" \
-      "$C_ACCENT" "${load_1:-n/a}" "$C_RESET" \
-      "$C_ACCENT" "${load_5:-n/a}" "$C_RESET" \
-      "$C_ACCENT" "${load_15:-n/a}" "$C_RESET"
-  else
-    print_kv 'Load Averages' 'unavailable'
   fi
+  print_header "$kernel" "$uptime_human" "${load_1:-}" "${load_5:-}" "${load_15:-}"
+  print_kv 'Distribution' "${distro:-unavailable}"
   printf '%b%-16s%b %b%s%b running processes\n' "$C_LABEL" 'Processes:' "$C_RESET" "$C_ACCENT" "${process_count:-unavailable}" "$C_RESET"
   printf '%b%-16s%b %b%s%b (%b%s cores%b)\n' "$C_LABEL" 'CPU:' "$C_RESET" "$C_VALUE" "${cpu_model:-unavailable}" "$C_RESET" "$C_ACCENT" "${cpu_cores:-unavailable}" "$C_RESET"
   if [[ -n "${gpu_lines:-}" ]]; then
