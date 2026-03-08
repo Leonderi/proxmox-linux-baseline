@@ -23,22 +23,27 @@ Schlanke, wiederverwendbare Linux-Baseline fuer Ubuntu-VMs aus Proxmox-Templates
 - Starship-Version: `1.24.2`
 - MOTD-Branding: `tk-thran`
 - MOTD-Modus: `summary` (Docker-Kurzstatus)
+- Docker-Zugriff fuer den Zieluser: wenn die Gruppe `docker` existiert, wird der Zieluser ihr hinzugefuegt
 
 ## MOTD-Standard
 
 `setup-zsh-baseline.sh` installiert zusaetzlich eine dynamische MOTD:
 
 - Renderer: `/usr/local/lib/tk-motd/render.sh`
-- Wrapper: `/etc/update-motd.d/99-tk-thran-status`
+- Shell-Hook: `/etc/profile.d/90-tk-thran-motd.sh`
+- zsh-Source: `/etc/zsh/zshrc`
+- Wrapper-Stub: `/etc/update-motd.d/99-tk-thran-status`
 - Konfiguration: `/etc/default/tk-motd`
 
 Verhalten:
 
-- Ubuntu-Default-Skripte unter `/etc/update-motd.d/` werden deaktiviert.
-- Nur `99-tk-thran-status` bleibt aktiv.
+- Die farbige MOTD wird standardmaessig in interaktiven Shell-Sessions ueber `/etc/profile.d/90-tk-thran-motd.sh` angezeigt.
+- `zsh` sourced den Hook explizit aus `/etc/zsh/zshrc`.
+- Der Wrapper unter `/etc/update-motd.d/99-tk-thran-status` bleibt nur als Stub erhalten und ist standardmaessig nicht ausfuehrbar.
 - `/etc/default/tk-motd` wird nur beim ersten Lauf angelegt und spaetere manuelle Overrides bleiben erhalten.
 - Die Ausgabe ist farbiger und kompakter an den Saltbox-Stil angelehnt.
-- Disk-Balken werden mit vollen Unicode-Bloecken und farbigen Schwellenwerten gerendert.
+- Der Header wird fuer `tk-thran` als ASCII-Art gerendert.
+- Disk-Balken werden breiter mit vollen Unicode-Bloecken und ruhigeren Farbschwellen gerendert.
 
 Konfigurationskeys in `/etc/default/tk-motd`:
 
@@ -56,6 +61,7 @@ Hinweis:
 
 - Saltbox-spezifische Units wie `saltbox-docker-controller` oder `rclone_merger` werden bewusst nicht mehr als globale Baseline-Defaults gesetzt.
 - Fuer Saltbox oder andere Sonderrollen wird die Service-Liste pro VM ueber `/etc/default/tk-motd` ueberschrieben.
+- Docker-Zahlen in der MOTD erscheinen fuer interaktive User nur dann direkt, wenn der User auf den Docker-Socket zugreifen darf; nach dem ersten Hinzufuegen zur `docker`-Gruppe ist deshalb ein neuer Login noetig.
 
 ## Verwendung
 

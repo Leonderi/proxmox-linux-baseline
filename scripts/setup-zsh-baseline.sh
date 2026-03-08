@@ -42,6 +42,23 @@ configure_interactive_user() {
   chmod 0644 "${home_dir}/.zshrc"
 }
 
+ensure_group_membership() {
+  local group_name="$1"
+  local target_user="$2"
+
+  if ! getent group "$group_name" >/dev/null 2>&1; then
+    return 0
+  fi
+  if ! id "$target_user" >/dev/null 2>&1; then
+    return 0
+  fi
+  if id -nG "$target_user" | tr ' ' '\n' | grep -qx "$group_name"; then
+    return 0
+  fi
+
+  usermod -aG "$group_name" "$target_user"
+}
+
 install_tk_motd() {
   install -d -m 0755 /usr/local/lib/tk-motd
 
@@ -78,12 +95,12 @@ setup_colors() {
   fi
 
   C_RESET=$'\033[0m'
-  C_LABEL=$'\033[1;95m'
-  C_VALUE=$'\033[1;97m'
-  C_ACCENT=$'\033[1;96m'
-  C_GOOD=$'\033[1;92m'
-  C_WARN=$'\033[1;93m'
-  C_BAD=$'\033[1;91m'
+  C_LABEL=$'\033[38;5;182m'
+  C_VALUE=$'\033[0;97m'
+  C_ACCENT=$'\033[38;5;117m'
+  C_GOOD=$'\033[38;5;114m'
+  C_WARN=$'\033[38;5;180m'
+  C_BAD=$'\033[38;5;174m'
   C_DIM=$'\033[0;90m'
 }
 
@@ -110,16 +127,51 @@ print_kv() {
 }
 
 docker_safe_cmd() {
+  docker_query "$@" || true
+}
+
+docker_query() {
+  if ((${#DOCKER_RUN[@]} == 0)); then
+    return 1
+  fi
   if command -v timeout >/dev/null 2>&1; then
-    timeout 2s docker "$@" 2>/dev/null || true
+    timeout 2s "${DOCKER_RUN[@]}" "$@" 2>/dev/null
   else
-    docker "$@" 2>/dev/null || true
+    "${DOCKER_RUN[@]}" "$@" 2>/dev/null
+  fi
+}
+
+init_docker_access() {
+  DOCKER_RUN=()
+
+  if ! command -v docker >/dev/null 2>&1; then
+    return
+  fi
+
+  if command -v timeout >/dev/null 2>&1; then
+    if timeout 2s docker info >/dev/null 2>&1; then
+      DOCKER_RUN=(docker)
+      return
+    fi
+    if command -v sudo >/dev/null 2>&1 && timeout 2s sudo -n docker info >/dev/null 2>&1; then
+      DOCKER_RUN=(sudo -n docker)
+      return
+    fi
+    return
+  fi
+
+  if docker info >/dev/null 2>&1; then
+    DOCKER_RUN=(docker)
+    return
+  fi
+  if command -v sudo >/dev/null 2>&1 && sudo -n docker info >/dev/null 2>&1; then
+    DOCKER_RUN=(sudo -n docker)
   fi
 }
 
 draw_bar() {
   local percent="$1"
-  local width=32
+  local width=44
   local filled=0
   local empty=0
   local percent_color=""
@@ -313,17 +365,22 @@ print_docker_status() {
   local detail_mode="$TK_MOTD_DOCKER_MODE"
 
   if [[ "$detail_mode" == "off" ]]; then
-    printf 'Docker:          disabled via TK_MOTD_DOCKER_MODE=off\n'
+    print_kv 'Docker' 'disabled via TK_MOTD_DOCKER_MODE=off'
     return
   fi
 
   if ! command -v docker >/dev/null 2>&1; then
-    printf 'Docker:          docker CLI not installed\n'
+    print_kv 'Docker' 'docker CLI not installed'
     return
   fi
 
   if [[ "$(safe_cmd systemctl is-active docker)" != "active" ]]; then
-    printf 'Docker:          docker service is not active\n'
+    print_kv 'Docker' 'docker service is not active'
+    return
+  fi
+
+  if ((${#DOCKER_RUN[@]} == 0)); then
+    print_kv 'Docker' 'docker access unavailable (re-login after docker group change)'
     return
   fi
 
@@ -404,17 +461,32 @@ print_traefik_status() {
 
 print_header() {
   local brand_upper
-  local brand_pad=0
+  local line_one=""
+  local line_two=""
+  local line_three=""
+  local line_four=""
+  local line_five=""
+  local line_six=""
 
   brand_upper="$(printf '%s' "$TK_MOTD_BRAND" | tr '[:lower:]' '[:upper:]')"
-  brand_pad=$(( (51 - ${#brand_upper}) / 2 ))
-  if (( brand_pad < 0 )); then
-    brand_pad=0
+  if [[ "$brand_upper" == "TK-THRAN" ]]; then
+    line_one=' _______ _  __      _______ _    _ _____            _   _ '
+    line_two='|__   __| |/ /     |__   __| |  | |  __ \     /\   | \ | |'
+    line_three='   | |  | '"'"' / _______ | |  | |__| | |__) |   /  \  |  \| |'
+    line_four='   | |  |  < |_______|| |  |  __  |  _  /   / /\ \ | . ` |'
+    line_five='   | |  | . \        | |  | |  | | | \ \  / ____ \| |\  |'
+    line_six='   |_|  |_|\_\       |_|  |_|  |_|_|  \_\/_/    \_\_| \_|'
+    printf '%b%s%b\n' "$C_DIM" "$line_one" "$C_RESET"
+    printf '%b%s%b\n' "$C_DIM" "$line_two" "$C_RESET"
+    printf '%b%s%b\n' "$C_ACCENT" "$line_three" "$C_RESET"
+    printf '%b%s%b\n' "$C_ACCENT" "$line_four" "$C_RESET"
+    printf '%b%s%b\n' "$C_ACCENT" "$line_five" "$C_RESET"
+    printf '%b%s%b\n' "$C_DIM" "$line_six" "$C_RESET"
+  else
+    printf '%b/-------------------------------------------------------\\\\%b\n' "$C_DIM" "$C_RESET"
+    printf '%b|%b %-53s %b|\n' "$C_DIM" "$C_RESET" "$brand_upper" "$C_DIM"
+    printf '%b\\\\-------------------------------------------------------/%b\n' "$C_DIM" "$C_RESET"
   fi
-
-  printf '%b/-------------------------------------------------------\\\\%b\n' "$C_DIM" "$C_RESET"
-  printf '%b|%b%*s%b%s%b%*s%b|\n' "$C_DIM" "$C_RESET" "$brand_pad" '' "$C_ACCENT" "$brand_upper" "$C_RESET" $((51 - brand_pad - ${#brand_upper})) '' "$C_DIM"
-  printf '%b\\\\-------------------------------------------------------/%b\n' "$C_RESET" "$C_RESET"
   printf '\n'
 }
 
@@ -433,8 +505,10 @@ main() {
   local sessions
   local package_status
   local memory_line
+  local current_user
 
   setup_colors
+  init_docker_access
   distro="$(safe_cmd awk -F= '$1=="PRETTY_NAME"{gsub(/"/,"",$2); print $2}' /etc/os-release)"
   kernel="$(safe_cmd uname -r)"
   uptime_human="$(safe_cmd uptime -p | sed 's/^up //')"
@@ -446,6 +520,7 @@ main() {
   sessions="$(safe_cmd who | wc -l | tr -d ' ')"
   package_status="$(format_package_status)"
   memory_line="$(format_memory)"
+  current_user="${SUDO_USER:-${USER:-unknown}}"
 
   print_header
   print_kv 'Distribution' "${distro:-unavailable}"
@@ -479,6 +554,11 @@ main() {
   print_service_status
   print_docker_status
   print_traefik_status
+  if [[ "${DOCKER_RUN[*]:-}" == "sudo -n docker" ]]; then
+    printf '%b%s%b\n' "$C_DIM" "Hint: docker data is read via passwordless sudo." "$C_RESET"
+  elif command -v docker >/dev/null 2>&1 && ((${#DOCKER_RUN[@]} == 0)); then
+    printf '%b%s%b\n' "$C_DIM" "Hint: add ${current_user} to the docker group and re-login for docker-aware MOTD data." "$C_RESET"
+  fi
 }
 
 main
@@ -490,7 +570,21 @@ EOF_MOTD_RENDER
 #!/usr/bin/env bash
 /usr/local/lib/tk-motd/render.sh
 EOF_MOTD_WRAPPER
-  chmod 0755 /etc/update-motd.d/99-tk-thran-status
+  chmod 0644 /etc/update-motd.d/99-tk-thran-status
+
+  install -d -m 0755 /etc/profile.d
+  cat >/etc/profile.d/90-tk-thran-motd.sh <<'EOF_MOTD_PROFILE'
+#!/usr/bin/env bash
+[[ $- == *i* ]] || return
+[[ -n "${TK_MOTD_RENDERED:-}" ]] && return
+export TK_MOTD_RENDERED=1
+
+if [[ -x /usr/local/lib/tk-motd/render.sh ]]; then
+  /usr/local/lib/tk-motd/render.sh
+  printf '\n'
+fi
+EOF_MOTD_PROFILE
+  chmod 0755 /etc/profile.d/90-tk-thran-motd.sh
 
   if [[ ! -f /etc/default/tk-motd ]]; then
     cat >/etc/default/tk-motd <<'EOF_MOTD_DEFAULTS'
@@ -510,7 +604,7 @@ EOF_MOTD_DEFAULTS
       chmod 0644 "$motd_script"
     done
   fi
-  chmod 0755 /etc/update-motd.d/99-tk-thran-status
+  chmod 0644 /etc/update-motd.d/99-tk-thran-status
 }
 
 TARGET_USER="${1:-$(detect_cloud_init_user)}"
@@ -582,6 +676,7 @@ plugins=(git zsh-autosuggestions)
 [[ -f "$ZSH/oh-my-zsh.sh" ]] && source "$ZSH/oh-my-zsh.sh"
 [[ -f /usr/share/oh-my-zsh/custom/plugins/zsh-autocomplete/zsh-autocomplete.plugin.zsh ]] && source /usr/share/oh-my-zsh/custom/plugins/zsh-autocomplete/zsh-autocomplete.plugin.zsh
 [[ -f /etc/profile.d/starship.zsh ]] && source /etc/profile.d/starship.zsh
+[[ -f /etc/profile.d/90-tk-thran-motd.sh ]] && source /etc/profile.d/90-tk-thran-motd.sh
 command -v starship >/dev/null 2>&1 && eval "$(starship init zsh)"
 command -v eza >/dev/null 2>&1 && alias ls='eza --group-directories-first --icons=auto'
 HISTFILE="${HOME}/.zsh_history"
@@ -593,6 +688,7 @@ chmod 0644 /etc/zsh/zshrc
 
 configure_interactive_user "$TARGET_USER"
 configure_interactive_user root
+ensure_group_membership docker "$TARGET_USER"
 
 printf '# managed by cloud-init baseline\n' > /etc/skel/.zshrc
 chmod 0644 /etc/skel/.zshrc
