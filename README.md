@@ -6,7 +6,7 @@ Schlanke, wiederverwendbare Linux-Baseline fuer Ubuntu-VMs aus Proxmox-Templates
 
 - `config/starship.toml` - Prompt-Konfiguration
 - `config/starship.zsh` - OS-/Distro-Icon-Logik fuer `starship`
-- `scripts/setup-zsh-baseline.sh` - nicht-interaktives Setup fuer `zsh`, `starship`, `eza`, `oh-my-zsh`, `zsh-autosuggestions`, `zsh-autocomplete`, Zeitzone, Locale, Konsolen-Keyboard und `tk-thran` MOTD
+- `scripts/setup-zsh-baseline.sh` - nicht-interaktives Setup fuer `zsh`, `starship`, `eza`, `oh-my-zsh`, `zsh-autosuggestions`, `zsh-autocomplete`, Zeitzone, deutsche UTF-8-Locale, Konsolen-Keyboard und `tk-thran` MOTD
 
 ## Ziel
 
@@ -18,7 +18,7 @@ Schlanke, wiederverwendbare Linux-Baseline fuer Ubuntu-VMs aus Proxmox-Templates
 
 - Admin-User: `alexander`
 - Zeitzone: `Europe/Berlin`
-- Locale: `en_US.UTF-8`
+- Locale: `de_DE.UTF-8`
 - Konsolen-Tastaturlayout: `de`
 - Starship-Version: `1.24.2`
 - MOTD-Branding: `tk-thran`
@@ -44,6 +44,7 @@ Verhalten:
 - Die Ausgabe ist farbiger und kompakter an den Saltbox-Stil angelehnt.
 - Der Header wird fuer `tk-thran` als ASCII-Art gerendert.
 - Disk-Balken werden breiter mit vollen Unicode-Bloecken und ruhigeren Farbschwellen gerendert.
+- `setupcon --force` wird bewusst nicht mehr im Setup-Lauf erzwungen, um harmlose `dead_belowmacron`-Warnings aus `console-setup` zu vermeiden.
 
 Konfigurationskeys in `/etc/default/tk-motd`:
 

@@ -461,6 +461,7 @@ print_traefik_status() {
 
 print_header() {
   local brand_upper
+  local brand_raw
   local line_one=""
   local line_two=""
   local line_three=""
@@ -468,14 +469,15 @@ print_header() {
   local line_five=""
   local line_six=""
 
-  brand_upper="$(printf '%s' "$TK_MOTD_BRAND" | tr '[:lower:]' '[:upper:]')"
+  brand_raw="$(printf '%s' "$TK_MOTD_BRAND")"
+  brand_upper="$(printf '%s' "$brand_raw" | tr '[:lower:]' '[:upper:]')"
   if [[ "$brand_upper" == "TK-THRAN" ]]; then
-    line_one=' _______ _  __      _______ _    _ _____            _   _ '
-    line_two='|__   __| |/ /     |__   __| |  | |  __ \     /\   | \ | |'
-    line_three='   | |  | '"'"' / _______ | |  | |__| | |__) |   /  \  |  \| |'
-    line_four='   | |  |  < |_______|| |  |  __  |  _  /   / /\ \ | . ` |'
-    line_five='   | |  | . \        | |  | |  | | | \ \  / ____ \| |\  |'
-    line_six='   |_|  |_|\_\       |_|  |_|  |_|_|  \_\/_/    \_\_| \_|'
+    line_one='  _   _      _   _                               '
+    line_two=' | |_| | __ | |_| |__  _ __ __ _ _ __           '
+    line_three=' | __| |/ / | __|  _ \|  __/ _  |  _ \          '
+    line_four=' | |_|   <  | |_| | | | | | (_| | | | |         '
+    line_five='  \__|_|\_\  \__|_| |_|_|  \__,_|_| |_|         '
+    line_six='                                                '
     printf '%b%s%b\n' "$C_DIM" "$line_one" "$C_RESET"
     printf '%b%s%b\n' "$C_DIM" "$line_two" "$C_RESET"
     printf '%b%s%b\n' "$C_ACCENT" "$line_three" "$C_RESET"
@@ -628,8 +630,8 @@ curl -fL -o /etc/profile.d/starship.zsh "${STARSHIP_ZSH_URL}"
 chmod 0644 /etc/starship.toml /etc/profile.d/starship.zsh
 
 timedatectl set-timezone Europe/Berlin || true
-locale-gen en_US.UTF-8
-update-locale LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8
+locale-gen de_DE.UTF-8
+update-locale LANG=de_DE.UTF-8 LC_ALL=de_DE.UTF-8
 cat >/etc/default/keyboard <<'EOF_KEYBOARD'
 XKBMODEL="pc105"
 XKBLAYOUT="de"
@@ -637,7 +639,6 @@ XKBVARIANT=""
 XKBOPTIONS=""
 BACKSPACE="guess"
 EOF_KEYBOARD
-setupcon --force || true
 
 if [[ -f /etc/adduser.conf ]]; then
   sed -i 's|^DSHELL=.*|DSHELL=/usr/bin/zsh|' /etc/adduser.conf
