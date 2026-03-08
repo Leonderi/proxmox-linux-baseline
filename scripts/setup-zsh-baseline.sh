@@ -96,6 +96,27 @@ ensure_required_packages() {
   apt-get install -y --no-install-recommends "${missing[@]}"
 }
 
+ensure_locale_enabled() {
+  local locale_name="$1"
+  local locale_gen_file="/etc/locale.gen"
+
+  if [[ ! -f "$locale_gen_file" ]]; then
+    printf '%s UTF-8\n' "$locale_name" >"$locale_gen_file"
+    return 0
+  fi
+
+  if grep -Eq "^[[:space:]]*${locale_name}[[:space:]]+UTF-8$" "$locale_gen_file"; then
+    return 0
+  fi
+
+  if grep -Eq "^[[:space:]]*#[[:space:]]*${locale_name}[[:space:]]+UTF-8$" "$locale_gen_file"; then
+    sed -i "s|^[[:space:]]*#[[:space:]]*${locale_name}[[:space:]]\\+UTF-8$|${locale_name} UTF-8|" "$locale_gen_file"
+    return 0
+  fi
+
+  printf '%s UTF-8\n' "$locale_name" >>"$locale_gen_file"
+}
+
 install_tk_motd() {
   install -d -m 0755 /usr/local/lib/tk-motd
 
@@ -735,6 +756,7 @@ curl -fL -o /etc/profile.d/starship.zsh "${STARSHIP_ZSH_URL}"
 chmod 0644 /etc/starship.toml /etc/profile.d/starship.zsh
 
 timedatectl set-timezone Europe/Berlin || true
+ensure_locale_enabled de_DE.UTF-8
 locale-gen de_DE.UTF-8
 update-locale LANG=de_DE.UTF-8 LC_ALL=de_DE.UTF-8
 cat >/etc/default/keyboard <<'EOF_KEYBOARD'

@@ -25,6 +25,7 @@ Schlanke, wiederverwendbare Linux-Baseline fuer Ubuntu-VMs aus Proxmox-Templates
 - MOTD-Modus: `summary` (Docker-Kurzstatus)
 - Docker-Zugriff fuer den Zieluser: wenn die Gruppe `docker` existiert, wird der Zieluser ihr hinzugefuegt
 - Fehlende Basis-Pakete auf Bestands-VMs: `ca-certificates`, `console-setup`, `curl`, `git`, `keyboard-configuration`, `locales`, `tar`, `zsh` werden bei Bedarf vorab per `apt-get` installiert
+- Locale-Bootstrap auf Debian/Proxmox-Hosts: `de_DE.UTF-8 UTF-8` wird bei Bedarf in `/etc/locale.gen` aktiviert, bevor `locale-gen` und `update-locale` laufen
 
 ## MOTD-Standard
 
