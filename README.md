@@ -44,38 +44,44 @@ Umgebung: `TK_DOKU_REPO` (Standard `~/workdir/doku`), `NETBOX_MCP_URL`, `NETBOX_
 
 ### MOTD
 
-Variante „Steckbrief“ (entschieden 2026-11-06), unter dem Banner:
+Kopf „kompakt“ (entschieden 2026-11-06): Banner `tk-thran` in Firmen-Lila (`#9040D0`), rechts daneben die wichtigsten Angaben aus NetBox. Die Platten kommen aus NetBox (Name, Mountpoint, NVMe/HDD), die Belegung misst der Gast selbst.
 
 ```
-  app-web · LXC 380 · APP (VLAN 30) · 10.40.30.30
-  Firmenwebseite tk-thran.de (Hugo, Caddy)
+  __  __       __  __                 app-web · LXC 380
+ / /_/ /______/ /_/ /  _______ ____   APP (VLAN 30) · 10.40.30.30
+/ __/  '_/___/ __/ _ \/ __/ _ `/ _ \  std · PBS täglich 01:00
+\__/_/\_\    \__/_//_/_/  \_,_/_//_/  Firmenwebseite tk-thran.de (Hugo, Caddy)
 
-  Klasse   std · PBS täglich 01:00
   Dienste  Caddy :80
   Web      https://www.tk-thran.de
   Doku     doku.tk-thran.com/infrastructure/hosts/app-web
 
-  System   Ubuntu 24.04.5 · up 14 Tage · Load 0.02
-  Speicher RAM 180M/512M · / 43 % · /opt/containers 3 %
+  System   Ubuntu 24.04.5 · up 16 Tage
+  RAM      Arbeitsspeicher                 86M/512M  ███░░░░░░░░░░░░░  16 %
+  Platten  rootfs  /                NVMe  1,8G/7,8G  ████░░░░░░░░░░░░  24 %
+           mp0     /opt/containers  NVMe  1,1M/3,9G  ░░░░░░░░░░░░░░░░   1 %
   Docker   1/1 laufen, alle gesund
 
-  ⚠ Neustart nötig · 3 Sicherheitsupdates offen
+  ⚠ 10 Sicherheitsupdates offen
 ```
 
-Der Warnblock erscheint bei: Neustart nötig, offenen Sicherheitsupdates, fehlgeschlagenen Units, Platten ab 85 %, ungesunden, ständig neu startenden oder mit Fehler beendeten Containern. `NO_COLOR=1` schaltet die Farben ab.
+Der Warnblock erscheint bei: Neustart nötig, offenen Sicherheitsupdates, fehlgeschlagenen Units, nicht eingehängten Disks, Platten ab 85 %, ungesunden, ständig neu startenden oder mit Fehler beendeten Containern. In LXCs fehlt die Last, weil `/proc/loadavg` dort die Last des Hosts zeigt. `NO_COLOR=1` schaltet die Farben ab.
 
 ### tk
 
+`/usr/local/bin/tk` (Python) gibt Rahmentabellen im Stil von `cscli` aus, Zustände farbig.
+
 | Befehl | Zeigt |
 | --- | --- |
-| `tk ps` | Container: Name, Zustand, Health, Image, Laufzeit. Probleme oben |
-| `tk status` | MOTD, fehlgeschlagene Units, Dienste mit altem Code (`needrestart -b`) |
-| `tk logs <dienst> [n] [-f]` | Container-Log oder Journal einer Unit |
-| `tk stacks` | Compose-Projekte |
-| `tk updates` | offene Updates, letzter Lauf von `unattended-upgrades`, Neustart nötig? |
-| `tk net` | Adressen, Route, DNS, lauschende Ports |
+| `tk ps` | Container: Zustand, Health, Image, Version, Laufzeit, Neustarts. Probleme oben |
+| `tk status` | Überblick: System, RAM, Platten, Docker, Updates, Neustart, Units, needrestart |
+| `tk logs <dienst> [n] [-f]` | Container-Log oder Journal einer Unit (als Strom, nicht als Tabelle) |
+| `tk stacks` | Compose-Projekte mit Zustand, Container und Datei |
+| `tk updates` | offene Updates je Paket mit Quelle und ob es automatisch kommt, letzter Lauf, Neustart |
+| `tk net` | Schnittstellen, Route, DNS, lauschende Ports |
 | `tk doctor` | Prüfliste der Baseline mit ✓ und ⚠ |
-| `tk info` | Steckbrief aus NetBox |
+| `tk info` | Steckbrief aus NetBox mit Diensten und Platten |
+| `tk table` | TSV von stdin als Tabelle, für eigene Skripte |
 
 ## Verwendung
 
