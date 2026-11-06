@@ -88,6 +88,14 @@
 - name: Umstellung von docker.io
   when: "'docker.io' in ansible_facts.packages and not ansible_check_mode"
   block:
+    # Pakete vorab laden: Waehrend des Wechsels laeuft kein Daemon, und ohne Daemon gibt es keinen
+    # eingebauten DNS zwischen den Containern (VM 370: Nextcloud fand seine Datenbank 20 s nicht).
+    - name: docker-ce vorab herunterladen (kuerzere Luecke ohne Daemon)
+      ansible.builtin.apt:
+        name: "{{ docker_packages }}"
+        state: present
+        download_only: true
+
     # live-restore zuerst im laufenden docker.io einschalten (Reload, kein Neustart). Dann laufen
     # die Container beim Paketwechsel weiter und der neue Daemon uebernimmt sie (LXC 380, 2026-11-06).
     - name: live-restore im laufenden docker.io aktivieren
