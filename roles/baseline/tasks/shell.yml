@@ -43,7 +43,7 @@
     git -C "{{ baseline_cache_dir }}/src/{{ r.name }}" archive HEAD | tar -x -C "$d/oh-my-zsh/{{ r.dest }}"
     {% endfor %}
     echo "{{ baseline_omz_id }}" > "$d/oh-my-zsh/.tk-version"
-    tar -czf "{{ baseline_cache_dir }}/oh-my-zsh-{{ baseline_omz_id }}.tar.gz" -C "$d" oh-my-zsh
+    tar -czf "{{ baseline_cache_dir }}/oh-my-zsh-{{ baseline_omz_id }}.tar.gz" --owner=0 --group=0 --mode=go-w -C "$d" oh-my-zsh
     rm -rf "$d"
   args:
     creates: "{{ baseline_cache_dir }}/oh-my-zsh-{{ baseline_omz_id }}.tar.gz"
@@ -89,6 +89,15 @@
     owner: root
     group: root
   when: (baseline_omz_have.content | default('') | b64decode | trim) != baseline_omz_id
+
+- name: oh-my-zsh nur fuer root schreibbar (sonst verweigert compaudit die Completions)
+  ansible.builtin.file:
+    path: /usr/share/oh-my-zsh
+    state: directory
+    recurse: true
+    owner: root
+    group: root
+    mode: go-w
 
 - name: starship-Konfiguration
   ansible.builtin.copy:
