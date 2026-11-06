@@ -63,7 +63,7 @@ tk_motd_problems() {
 }
 
 tk_motd_main() {
-    local distro mem disks docker_line total running unhealthy problems
+    local distro mem disks docker_line total running unhealthy problems load
     tk_colors
 
     if [[ -r "$HEAD" ]]; then
@@ -86,7 +86,10 @@ tk_motd_main() {
     mem=$(free -m | awk '/^Mem:/ { u=$3; t=$2; f=(t >= 10240) ? "%.0fG/%.0fG" : "%dM/%dM"; if (t >= 10240) { u/=1024; t/=1024 } printf f, u, t }')
     disks=$(tk_disks | awk '{ printf "%s%s %s %%", (NR > 1 ? " · " : ""), $1, $2 }')
 
-    printf '\n  %sSystem  %s %s %s·%s up %s %s·%s Load %s\n' "$C_L" "$C_R" "$distro" "$C_D" "$C_R" "$(tk_human_uptime)" "$C_D" "$C_R" "$(cut -d' ' -f1 /proc/loadavg)"
+    # In LXCs zeigt /proc/loadavg die Last des Hosts, deshalb dort weglassen
+    load=""
+    [[ "$(systemd-detect-virt 2>/dev/null)" == lxc ]] || load=" ${C_D}·${C_R} Load $(cut -d' ' -f1 /proc/loadavg)"
+    printf '\n  %sSystem  %s %s %s·%s up %s%s\n' "$C_L" "$C_R" "$distro" "$C_D" "$C_R" "$(tk_human_uptime)" "$load"
     printf '  %sSpeicher%s RAM %s %s·%s %s\n' "$C_L" "$C_R" "$mem" "$C_D" "$C_R" "$disks"
 
     if total=$(tk_docker ps -aq | wc -l) && ((total > 0)); then

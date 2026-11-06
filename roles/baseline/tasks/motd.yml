@@ -69,6 +69,20 @@
   register: baseline_motd_scripts
   changed_when: baseline_motd_scripts.stdout == "1"
 
+- name: Ubuntu-News fuer das alte MOTD abschalten
+  ansible.builtin.systemd_service:
+    name: motd-news.timer
+    enabled: false
+    state: stopped
+    masked: true
+  failed_when: false
+
+- name: Fehlgeschlagenen motd-news-Lauf vergessen
+  ansible.builtin.shell: |
+    if systemctl is-failed --quiet motd-news.service; then systemctl reset-failed motd-news.service; echo reset; fi
+  register: baseline_motd_news
+  changed_when: "'reset' in baseline_motd_news.stdout"
+
 - name: Update-Stand erstmals festhalten
   ansible.builtin.command: /usr/local/lib/tk/apt-check-cache
   changed_when: false
