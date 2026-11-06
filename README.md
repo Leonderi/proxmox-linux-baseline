@@ -11,7 +11,8 @@ Entscheidungen und Einordnung: [Zielarchitektur HZ1, Linux-Baseline](https://dok
 | `ansible.cfg` | Inventar, Benutzer `alexander`, Schlüssel `~/.ssh/id_ed25519_ansible` |
 | `inventory/netbox.py` | dynamisches Inventar, siehe unten |
 | `playbooks/baseline.yml` | wendet die Rolle auf die Gruppe `baseline` an, ein Gast nach dem anderen |
-| `roles/baseline/` | die Rolle |
+| `roles/baseline/` | Grundausstattung |
+| `roles/docker/`, `playbooks/docker.yml` | Docker einheitlich aus dem Repo von Docker, Umstellung von `docker.io` |
 | `bootstrap/bootstrap-guest.sh` | einmalig je Gast: Ansible-Schlüssel und `sudo` ohne Passwort |
 | `scripts/setup-zsh-baseline.sh` | **veraltet**, altes Einmal-Skript für cloud-init. Entfällt, sobald die Vorlage VM 900 aus der Rolle gebaut wird |
 
@@ -35,7 +36,7 @@ Umgebung: `TK_DOKU_REPO` (Standard `~/workdir/doku`), `NETBOX_MCP_URL`, `NETBOX_
 
 | Bereich | Inhalt |
 | --- | --- |
-| Zugang | Schlüssel `ansible@ops-devbox` in `authorized_keys`, `/etc/sudoers.d/10-tk-baseline` (`NOPASSWD`), `sshd` nur mit Schlüssel und ohne root-Login (`/etc/ssh/sshd_config.d/10-tk-baseline.conf`) |
+| Zugang | Schlüssel `ansible@ops-devbox` in `authorized_keys`, `/etc/sudoers.d/10-tk-baseline` (`NOPASSWD`), `sshd` nur mit Schlüssel, ohne root-Login und ohne eigene „Last login“-Zeile, die steht im MOTD (`/etc/ssh/sshd_config.d/10-tk-baseline.conf`) |
 | System | Basispakete, `journald` höchstens 500 MB, Zeitzone `Europe/Berlin`, Locale `de_DE.UTF-8`, Tastatur `de`. Nur VMs: Guest Agent, `fstrim.timer`, `systemd-timesyncd` |
 | Updates | `unattended-upgrades` täglich, nur Sicherheitsupdates (Ubuntu-Vorgabe), **ohne automatischen Neustart**. `needrestart` mit Ubuntu-Vorgabe (Docker ausgenommen), in LXCs ohne Kernel-Hinweise. Zähler offener Updates nach jedem apt-Lauf in `/var/lib/tk/apt-check` |
 | Shell | zsh mit oh-my-zsh, `zsh-autosuggestions`, `zsh-autocomplete` und starship für `alexander` und root. Versionen fest in `defaults/main.yml`. Der Steuerrechner lädt sie und prüft die Prüfsumme, die Gäste holen nichts aus dem Internet |
@@ -57,6 +58,7 @@ Kopf „kompakt“ (entschieden 2026-11-06): Banner `tk-thran` in Firmen-Lila (`
   Doku     doku.tk-thran.com/infrastructure/hosts/app-web
 
   System   Ubuntu 24.04.5 · up 16 Tage
+  Login    zuletzt heute 18:25 von 192.168.6.110
   RAM      Arbeitsspeicher                 86M/512M  ███░░░░░░░░░░░░░  16 %
   Platten  rootfs  /                NVMe  1,8G/7,8G  ████░░░░░░░░░░░░  24 %
            mp0     /opt/containers  NVMe  1,1M/3,9G  ░░░░░░░░░░░░░░░░   1 %
@@ -77,11 +79,21 @@ Der Warnblock erscheint bei: Neustart nötig, offenen Sicherheitsupdates, fehlge
 | `tk status` | Überblick: System, RAM, Platten, Docker, Updates, Neustart, Units, needrestart |
 | `tk logs <dienst> [n] [-f]` | Container-Log oder Journal einer Unit (als Strom, nicht als Tabelle) |
 | `tk stacks` | Compose-Projekte mit Zustand, Container und Datei |
-| `tk updates` | offene Updates je Paket mit Quelle und ob es automatisch kommt, letzter Lauf, Neustart |
+| `tk updates` | offene Updates je Paket mit Quelle und ob es automatisch kommt (Docker-Pakete: monatlich), letzter Lauf, Neustart |
 | `tk net` | Schnittstellen, Route, DNS, lauschende Ports |
 | `tk doctor` | Prüfliste der Baseline mit ✓ und ⚠ |
 | `tk info` | Steckbrief aus NetBox mit Diensten und Platten |
 | `tk table` | TSV von stdin als Tabelle, für eigene Skripte |
+
+## Docker
+
+Entschieden am 2026-11-06: überall `docker-ce` aus dem Repo von Docker. Die Rolle `docker` (`playbooks/docker.yml`) lässt Gäste ohne Docker aus und macht sonst:
+
+1. Docker-Schlüssel auf dem Steuerrechner laden und den Fingerprint `9DC858229FC7DD38854AE2D88D81803C0EBFCD88` prüfen, Paketquelle als `docker.sources` anlegen.
+2. `daemon.json` mit `live-restore` und Log-Grenzen (`10m` × 3) schreiben. Vorhandene Einstellungen wie `data-root` bleiben.
+3. Auf Gästen mit `docker.io`: `live-restore` per Reload aktivieren, laufende Container merken, Dienst und Socket stoppen, Ubuntu-Pakete entfernen (`/var/lib/docker` bleibt), `docker-ce` installieren, Socket und Dienst frisch starten, prüfen, dass jeder vorher laufende Container läuft und kein Image fehlt. Scheitert etwas, kommt `docker.io` zurück und der Lauf bricht ab.
+
+Updates kommen nicht über `unattended-upgrades`, sondern monatlich per Ansible. Erprobt auf LXC 380: Caddy lief beim Wechsel weiter, die Website war nicht unterbrochen.
 
 ## Verwendung
 
