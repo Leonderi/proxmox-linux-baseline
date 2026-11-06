@@ -21,7 +21,8 @@
   check_mode: false
 
 - name: Fingerprint des Docker-Schluessels pruefen
-  ansible.builtin.shell: gpg --show-keys --with-colons "{{ docker_cache_dir }}/docker.asc" | awk -F: '$1 == "fpr" { print $10 }'
+  ansible.builtin.shell: >-
+    gpg --show-keys --with-colons "{{ docker_cache_dir }}/docker.asc" | awk -F: '$1 == "fpr" { print $10 }'
   register: docker_fpr
   changed_when: false
   failed_when: docker_gpg_fingerprint not in docker_fpr.stdout_lines
