@@ -12,7 +12,7 @@
 
 - name: Gaeste ohne Docker auslassen
   ansible.builtin.meta: end_host
-  when: "'docker.io' not in ansible_facts.packages and 'docker-ce' not in ansible_facts.packages"
+  when: "'docker.io' not in ansible_facts.packages and 'docker-ce' not in ansible_facts.packages and not (docker_install | bool)"
 
 - name: Docker-Schluessel auf dem Steuerrechner laden
   ansible.builtin.get_url:
@@ -72,6 +72,12 @@
     update_cache: true
   when: docker_source is changed or docker_old_list is changed
 
+- name: Ordner /etc/docker
+  ansible.builtin.file:
+    path: /etc/docker
+    state: directory
+    mode: "0755"
+
 - name: daemon.json lesen
   ansible.builtin.slurp:
     src: /etc/docker/daemon.json
@@ -83,6 +89,7 @@
     dest: /etc/docker/daemon.json
     content: >-
       {{ docker_daemon_defaults
+         | combine(docker_daemon_extra)
          | combine((docker_daemon_have.content | default('e30=') | b64decode | from_json) if docker_daemon_have.content is defined else {})
          | combine(docker_daemon_enforced)
          | to_nice_json(indent=2) }}
@@ -247,3 +254,9 @@
   changed_when: false
   failed_when: docker_live_restore.stdout | trim != 'true'
   when: not ansible_check_mode
+
+- name: Admin-User in der Gruppe docker
+  ansible.builtin.user:
+    name: "{{ baseline_user | default('alexander') }}"
+    groups: docker
+    append: true

@@ -14,6 +14,11 @@ docker_cache_dir: "{{ lookup('env', 'HOME') }}/.cache/tk-baseline"
 docker_exclude_vmids: [330]
 docker_keep_ubuntu_vmids: [220, 240, 320, 360, 390, 520]
 
+# Frische VM ohne Docker: mit -e docker_install=true installieren (sonst wird sie ausgelassen)
+docker_install: false
+# Gast-Einstellungen fuer daemon.json, z. B. {"data-root": "/opt/containers/docker"} (VM-Baustandard)
+docker_daemon_extra: {}
+
 docker_packages:
   - docker-ce
   - docker-ce-cli

@@ -104,13 +104,18 @@ def build(data):
     hostvars = {}
     for host in data["hosts"]:
         v = host.get("vars", {})
-        if host.get("status") != "active" or not str(host.get("platform", "")).startswith(("Ubuntu", "Debian")):
+        status = host.get("status")
+        if status not in ("active", "planned") or not str(host.get("platform", "")).startswith(("Ubuntu", "Debian")):
             continue
         if not v.get("IP"):
             continue
         nb = slim(host)
         name = nb["name"]
         hostvars[name] = {"ansible_host": nb["ip"], "nb": nb}
+        # Gaeste im Aufbau: nur in der Gruppe planned, Laeufe mit -e target=<gast>
+        if status == "planned":
+            groups.setdefault("planned", []).append(name)
+            continue
         groups["linux"].append(name)
         if nb["vmid"] not in EXCLUDE_VMIDS:
             groups["baseline"].append(name)

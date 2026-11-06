@@ -6,7 +6,8 @@
 #
 # Gruppe baseline = alle aktiven Linux-Gaeste aus NetBox ohne die Saltbox.
 - name: Linux-Baseline
-  hosts: baseline
+  # -e target=<gast> fuer Gaeste im Status planned (Aufbau), sonst die Gruppe baseline
+  hosts: "{{ target | default('baseline') }}"
   become: true
   serial: 1
   roles:
