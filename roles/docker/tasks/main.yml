@@ -3,6 +3,10 @@
 # laufende Container merken, Pakete tauschen, dieselben Container wieder starten, pruefen.
 # Scheitert etwas, kommt docker.io zurueck (rescue) und der Lauf bricht mit Fehler ab.
 
+- name: Ausgenommene Gaeste auslassen (Mailcow, Umzugskandidaten mit docker.io)
+  ansible.builtin.meta: end_host
+  when: (nb.vmid | default(0)) in (docker_exclude_vmids + docker_keep_ubuntu_vmids)
+
 - name: Paketstand lesen
   ansible.builtin.package_facts:
 
