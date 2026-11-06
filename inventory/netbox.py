@@ -91,6 +91,10 @@ def slim(host):
             for s in host.get("services", [])
             if not str(s.get("description", "")).startswith("VERALTET")
         ],
+        "disks": [
+            {k: d.get(k) for k in ("name", "sizeGb", "storage", "mountpoint", "description")}
+            for d in host.get("disks", [])
+        ],
         "netbox": host.get("netbox"),
     }
 

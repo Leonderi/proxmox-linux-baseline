@@ -24,6 +24,14 @@
     group: root
     mode: "0644"
 
+- name: Platten laut NetBox
+  ansible.builtin.template:
+    src: disks.tsv.j2
+    dest: /etc/tk/disks
+    owner: root
+    group: root
+    mode: "0644"
+
 - name: Skripte
   ansible.builtin.copy:
     src: "{{ item.src }}"
@@ -34,7 +42,7 @@
   loop:
     - { src: motd-render.sh, dest: /usr/local/lib/tk/motd-render }
     - { src: apt-check-cache.sh, dest: /usr/local/lib/tk/apt-check-cache }
-    - { src: tk.sh, dest: /usr/local/bin/tk }
+    - { src: tk.py, dest: /usr/local/bin/tk }
 
 - name: Login-Hook
   ansible.builtin.copy:

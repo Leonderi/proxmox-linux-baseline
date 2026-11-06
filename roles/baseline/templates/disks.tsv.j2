@@ -1,0 +1,6 @@
+{#- Platten des Gasts laut NetBox: Name, Mountpoint, Speicherart, Groesse in GB, Beschreibung.
+    "/" zuerst, danach nach Mountpoint. -#}
+{% set storage_label = {'local-lvm': 'NVMe', 'hdd-zfs': 'HDD'} %}
+{% for d in (nb.disks | default([])) | sort(attribute='mountpoint') %}
+{{ d.name }}	{{ d.mountpoint | default('-', true) }}	{{ storage_label.get(d.storage, d.storage | default('-', true)) }}	{{ d.sizeGb | default('') }}	{{ (d.description | default('')) | replace('\t', ' ') }}
+{% endfor %}
