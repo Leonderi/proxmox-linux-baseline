@@ -1,0 +1,9 @@
+---
+- name: Reload ssh
+  ansible.builtin.shell: /usr/sbin/sshd -t && systemctl try-reload-or-restart ssh.service
+  changed_when: true
+
+- name: Restart journald
+  ansible.builtin.systemd_service:
+    name: systemd-journald
+    state: restarted

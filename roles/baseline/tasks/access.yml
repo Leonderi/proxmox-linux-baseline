@@ -1,0 +1,41 @@
+---
+- name: .ssh des Admin-Users
+  ansible.builtin.file:
+    path: "~{{ baseline_user }}/.ssh"
+    state: directory
+    owner: "{{ baseline_user }}"
+    group: "{{ baseline_user }}"
+    mode: "0700"
+
+- name: Schluessel des Ansible-Steuerrechners
+  ansible.builtin.lineinfile:
+    path: "~{{ baseline_user }}/.ssh/authorized_keys"
+    line: "{{ baseline_ansible_pubkey }}"
+    create: true
+    owner: "{{ baseline_user }}"
+    group: "{{ baseline_user }}"
+    mode: "0600"
+
+- name: sudo ohne Passwort fuer den Admin-User
+  ansible.builtin.copy:
+    dest: /etc/sudoers.d/10-tk-baseline
+    content: "{{ baseline_user }} ALL=(ALL) NOPASSWD:ALL\n"
+    owner: root
+    group: root
+    mode: "0440"
+    validate: visudo -cf %s
+  when: baseline_sudo_nopasswd | bool
+
+- name: sshd nur mit Schluessel, kein root-Login
+  ansible.builtin.copy:
+    dest: /etc/ssh/sshd_config.d/10-tk-baseline.conf
+    content: |
+      # managed by proxmox-linux-baseline (Ansible)
+      PasswordAuthentication no
+      KbdInteractiveAuthentication no
+      PermitRootLogin no
+    owner: root
+    group: root
+    mode: "0644"
+    validate: /usr/sbin/sshd -t -f %s
+  notify: Reload ssh

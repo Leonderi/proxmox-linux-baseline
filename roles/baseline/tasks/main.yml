@@ -1,0 +1,25 @@
+---
+- name: Nur Ubuntu und Debian
+  ansible.builtin.assert:
+    that: ansible_facts.os_family == 'Debian'
+    quiet: true
+
+- name: Zugang
+  ansible.builtin.import_tasks: access.yml
+  tags: [access]
+
+- name: Systemschicht
+  ansible.builtin.import_tasks: system.yml
+  tags: [system]
+
+- name: Updates
+  ansible.builtin.import_tasks: updates.yml
+  tags: [updates]
+
+- name: Shell
+  ansible.builtin.import_tasks: shell.yml
+  tags: [shell]
+
+- name: MOTD und tk
+  ansible.builtin.import_tasks: motd.yml
+  tags: [motd]

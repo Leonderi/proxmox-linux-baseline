@@ -1,0 +1,16 @@
+# managed by proxmox-linux-baseline (Ansible), Aenderungen im Repo statt hier
+[[ -o interactive ]] || return
+export ZSH="/usr/share/oh-my-zsh"
+export STARSHIP_CONFIG="/etc/starship.toml"
+ZSH_THEME=""
+plugins=(git zsh-autosuggestions)
+[[ -f "$ZSH/oh-my-zsh.sh" ]] && source "$ZSH/oh-my-zsh.sh"
+[[ -f "$ZSH/custom/plugins/zsh-autocomplete/zsh-autocomplete.plugin.zsh" ]] && source "$ZSH/custom/plugins/zsh-autocomplete/zsh-autocomplete.plugin.zsh"
+[[ -f /etc/profile.d/starship.zsh ]] && source /etc/profile.d/starship.zsh
+[[ -f /etc/profile.d/90-tk-thran-motd.sh ]] && source /etc/profile.d/90-tk-thran-motd.sh
+command -v starship >/dev/null 2>&1 && eval "$(starship init zsh)"
+command -v eza >/dev/null 2>&1 && alias ls='eza --group-directories-first --icons=auto'
+HISTFILE="${HOME}/.zsh_history"
+HISTSIZE=10000
+SAVEHIST=10000
+setopt APPEND_HISTORY INC_APPEND_HISTORY SHARE_HISTORY HIST_IGNORE_DUPS HIST_IGNORE_SPACE

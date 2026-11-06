@@ -1,0 +1,75 @@
+---
+- name: Verzeichnisse
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop: [/etc/tk, /usr/local/lib/tk, /var/lib/tk]
+
+- name: Steckbrief aus NetBox
+  ansible.builtin.template:
+    src: host.json.j2
+    dest: /etc/tk/host.json
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Statischer MOTD-Kopf (Banner und Steckbrief)
+  ansible.builtin.template:
+    src: motd-head.j2
+    dest: /etc/tk/motd-head
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Skripte
+  ansible.builtin.copy:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - { src: motd-render.sh, dest: /usr/local/lib/tk/motd-render }
+    - { src: apt-check-cache.sh, dest: /usr/local/lib/tk/apt-check-cache }
+    - { src: tk.sh, dest: /usr/local/bin/tk }
+
+- name: Login-Hook
+  ansible.builtin.copy:
+    dest: /etc/profile.d/90-tk-thran-motd.sh
+    content: |
+      # managed by proxmox-linux-baseline (Ansible): MOTD einmal je interaktiver Sitzung
+      case $- in *i*) ;; *) return ;; esac
+      [ -n "${TK_MOTD_RENDERED:-}" ] && return
+      export TK_MOTD_RENDERED=1
+      [ -x /usr/local/lib/tk/motd-render ] && /usr/local/lib/tk/motd-render
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Alten MOTD-Renderer der Skript-Baseline entfernen
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /usr/local/lib/tk-motd
+    - /etc/update-motd.d/99-tk-thran-status
+    - /etc/default/tk-motd
+
+- name: Ubuntu-MOTD-Skripte stumm (das tk-MOTD ersetzt sie)
+  ansible.builtin.shell: |
+    changed=0
+    for f in /etc/update-motd.d/*; do
+      [ -f "$f" ] || continue
+      if [ -x "$f" ]; then chmod 0644 "$f"; changed=1; fi
+    done
+    echo "$changed"
+  register: baseline_motd_scripts
+  changed_when: baseline_motd_scripts.stdout == "1"
+
+- name: Update-Stand erstmals festhalten
+  ansible.builtin.command: /usr/local/lib/tk/apt-check-cache
+  changed_when: false
+  when: not ansible_check_mode

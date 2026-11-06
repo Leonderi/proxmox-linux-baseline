@@ -1,0 +1,87 @@
+---
+- name: Basispakete
+  ansible.builtin.apt:
+    name:
+      - ca-certificates
+      - console-setup
+      - curl
+      - git
+      - keyboard-configuration
+      - locales
+      - python3
+      - tar
+      - zsh
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Pakete nur fuer VMs
+  ansible.builtin.apt:
+    name: [qemu-guest-agent, systemd-timesyncd]
+    state: present
+  when: not baseline_is_lxc
+
+- name: Guest Agent und fstrim auf VMs
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    enabled: true
+    state: started
+  loop: [qemu-guest-agent, fstrim.timer, systemd-timesyncd]
+  when: not baseline_is_lxc
+
+- name: journald begrenzen
+  ansible.builtin.copy:
+    dest: /etc/systemd/journald.conf.d/10-tk-baseline.conf
+    content: |
+      # managed by proxmox-linux-baseline (Ansible)
+      [Journal]
+      SystemMaxUse={{ baseline_journald_max_use }}
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart journald
+
+- name: Zeitzone
+  ansible.builtin.file:
+    src: "/usr/share/zoneinfo/{{ baseline_timezone }}"
+    dest: /etc/localtime
+    state: link
+    force: true
+
+- name: /etc/timezone
+  ansible.builtin.copy:
+    dest: /etc/timezone
+    content: "{{ baseline_timezone }}\n"
+    mode: "0644"
+
+- name: Locale freischalten
+  ansible.builtin.lineinfile:
+    path: /etc/locale.gen
+    regexp: '^#?\s*{{ baseline_locale | regex_escape }}\s+UTF-8'
+    line: "{{ baseline_locale }} UTF-8"
+    create: true
+    mode: "0644"
+  register: baseline_locale_gen
+
+- name: Locale erzeugen
+  ansible.builtin.command: locale-gen
+  when: baseline_locale_gen is changed
+
+- name: Standard-Locale
+  ansible.builtin.copy:
+    dest: /etc/default/locale
+    content: |
+      LANG={{ baseline_locale }}
+      LC_ALL={{ baseline_locale }}
+    mode: "0644"
+
+- name: Konsolen-Tastatur
+  ansible.builtin.copy:
+    dest: /etc/default/keyboard
+    content: |
+      XKBMODEL="pc105"
+      XKBLAYOUT="de"
+      XKBVARIANT=""
+      XKBOPTIONS=""
+      BACKSPACE="guess"
+    mode: "0644"

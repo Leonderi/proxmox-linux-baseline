@@ -1,0 +1,44 @@
+---
+# Sicherheitsupdates taeglich, ohne automatischen Neustart. Neustarts regelt der monatliche
+# Ansible-Lauf (Zielarchitektur: std automatisch im Wartungsfenster, crit nur Meldung).
+- name: unattended-upgrades, needrestart und apt-check
+  ansible.builtin.apt:
+    name: [unattended-upgrades, needrestart, update-notifier-common]
+    state: present
+
+- name: Taegliche Laeufe einschalten
+  ansible.builtin.copy:
+    dest: /etc/apt/apt.conf.d/20auto-upgrades
+    content: |
+      APT::Periodic::Update-Package-Lists "1";
+      APT::Periodic::Unattended-Upgrade "1";
+    mode: "0644"
+
+- name: Kein automatischer Neustart
+  ansible.builtin.copy:
+    dest: /etc/apt/apt.conf.d/52tk-unattended-upgrades
+    content: |
+      // managed by proxmox-linux-baseline (Ansible)
+      // Herkunft und Paketauswahl: Ubuntu-Vorgabe aus 50unattended-upgrades (nur -security).
+      Unattended-Upgrade::Automatic-Reboot "false";
+      Unattended-Upgrade::SyslogEnable "true";
+    mode: "0644"
+
+- name: Update-Stand fuer MOTD nach jedem apt-Lauf festhalten
+  ansible.builtin.copy:
+    dest: /etc/apt/apt.conf.d/99tk-apt-check
+    content: |
+      // managed by proxmox-linux-baseline (Ansible): Zaehler fuer MOTD und tk updates
+      APT::Update::Post-Invoke-Success { "/usr/local/lib/tk/apt-check-cache || true"; };
+      DPkg::Post-Invoke { "/usr/local/lib/tk/apt-check-cache || true"; };
+    mode: "0644"
+
+- name: needrestart ohne Kernel-Hinweise in LXCs
+  ansible.builtin.copy:
+    dest: /etc/needrestart/conf.d/50-tk-baseline.conf
+    content: |
+      # managed by proxmox-linux-baseline (Ansible): LXC nutzt den Kernel des Hosts
+      $nrconf{kernelhints} = 0;
+      $nrconf{ucodehints} = 0;
+    mode: "0644"
+  when: baseline_is_lxc

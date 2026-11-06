@@ -1,0 +1,13 @@
+---
+# Linux-Baseline auf die Gaeste bringen.
+#
+#   ansible-playbook playbooks/baseline.yml --limit app-web --check --diff
+#   ansible-playbook playbooks/baseline.yml --limit app-web
+#
+# Gruppe baseline = alle aktiven Linux-Gaeste aus NetBox ohne die Saltbox.
+- name: Linux-Baseline
+  hosts: baseline
+  become: true
+  serial: 1
+  roles:
+    - baseline

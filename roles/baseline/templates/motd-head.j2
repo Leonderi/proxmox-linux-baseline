@@ -1,0 +1,30 @@
+{#- Statischer Teil des MOTD (Variante A "Steckbrief", entschieden 2026-11-06).
+    Farb-Platzhalter ersetzt /usr/local/lib/tk/motd-render: @L@ Label, @V@ Wert, @T@ Text,
+    @D@ gedimmt, @R@ zuruecksetzen. Zeilen mit @B@ sind Banner-Zeilen. -#}
+{%- set h = nb | default({}) -%}
+{%- set name = h.name | default(inventory_hostname) -%}
+{%- set svc = h.services | default([]) -%}
+{%- set backup = 'kein Backup (Testsystem)' if h.env | default('') == 'tst' else baseline_backup -%}
+@B@   __     __            __     __
+@B@  / /_   / /__         / /_   / /_    _____  ____ _   ____
+@B@ / __/  / //_/ ______ / __/  / __ \  / ___/ / __ `/  / __ \
+@B@/ /_   / ,<   /_____// /_   / / / / / /    / /_/ /  / / / /
+@B@\__/  /_/|_|         \__/  /_/ /_/ /_/     \__,_/  /_/ /_/
+
+  @V@{{ name }}@R@ @D@·@R@ {{ h.typ | default('?') }} {{ h.vmid | default('?') }} @D@·@R@ {{ h.zone | default('?') }}{% if h.vlan %} (VLAN {{ h.vlan }}){% endif %} @D@·@R@ {{ h.ip | default(ansible_host | default('')) }}
+{% if h.description | default('') %}
+  @T@{{ h.description }}@R@
+{% endif %}
+
+  @L@Klasse  @R@ {{ h.class | default('–', true) }} @D@·@R@ {{ backup }}
+{% for s in svc[:6] %}
+  @L@{{ 'Dienste' if loop.first else '       ' }}@R@  {{ s.name }}{% if s.ports %} @D@:{{ s.ports | join(',') }}@R@{% endif %}
+
+{% endfor %}
+{% if svc | length > 6 %}
+           @D@… und {{ svc | length - 6 }} weitere, siehe Doku@R@
+{% endif %}
+{% for f in h.fqdns | default([]) %}
+  @L@{{ 'Web    ' if loop.first else '       ' }}@R@  https://{{ f }}
+{% endfor %}
+  @L@Doku   @R@  {{ (baseline_doku_url ~ '/infrastructure/hosts/' ~ name) | regex_replace('^https://', '') }}

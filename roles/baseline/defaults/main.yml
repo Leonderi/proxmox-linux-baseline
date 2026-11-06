@@ -1,0 +1,39 @@
+---
+baseline_user: alexander
+baseline_timezone: Europe/Berlin
+baseline_locale: de_DE.UTF-8
+
+# Zugang: Schluessel des Ansible-Steuerrechners (Dev-VM 210) und sudo ohne Passwort
+baseline_ansible_pubkey: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOW4h6PFWlZGA8BLsUbVPAePtbRZl2XN/cuMXPSCo54W ansible@ops-devbox"
+baseline_sudo_nopasswd: true
+
+baseline_journald_max_use: 500M
+
+# Werkzeuge mit festen Versionen. Der Steuerrechner laedt sie und prueft die Pruefsumme,
+# die Gaeste holen nichts selbst aus dem Internet.
+baseline_starship_version: "1.24.2"
+baseline_starship_sha256: "3f12f61883ff324c1dbe7b885fa125d5490960e5cad6a12eeaa34695ec1b5744"
+baseline_omz_repos:
+  - name: oh-my-zsh
+    repo: https://github.com/ohmyzsh/ohmyzsh.git
+    version: 9151236d1e0cb64b2e803d7ec1736c7a717efc33
+    dest: ""
+  - name: zsh-autosuggestions
+    repo: https://github.com/zsh-users/zsh-autosuggestions.git
+    version: 85919cd1ffa7d2d5412f6d3fe437ebdbeeec4fc5
+    dest: custom/plugins/zsh-autosuggestions
+  - name: zsh-autocomplete
+    repo: https://github.com/marlonrichert/zsh-autocomplete.git
+    version: fe6c658cc420140f4c5a13d2a4369b54232aee22
+    dest: custom/plugins/zsh-autocomplete
+baseline_cache_dir: "{{ lookup('env', 'HOME') }}/.cache/tk-baseline"
+
+# MOTD
+baseline_brand: tk-thran
+baseline_doku_url: https://doku.tk-thran.com
+baseline_backup: "PBS täglich 01:00"
+baseline_motd_disk_warn: 85
+
+# Abgeleitet
+baseline_is_lxc: "{{ ansible_facts.virtualization_type | default('') == 'lxc' }}"
+baseline_omz_id: "{{ baseline_omz_repos | map(attribute='version') | map('regex_replace', '^(.{12}).*$', '\\1') | join('-') }}"

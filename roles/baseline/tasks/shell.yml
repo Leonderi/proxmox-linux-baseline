@@ -1,0 +1,154 @@
+---
+# Werkzeuge auf dem Steuerrechner holen (feste Versionen, Pruefsumme), dann verteilen.
+- name: Cache auf dem Steuerrechner
+  ansible.builtin.file:
+    path: "{{ baseline_cache_dir }}"
+    state: directory
+    mode: "0755"
+  delegate_to: localhost
+  become: false
+  run_once: true
+  check_mode: false
+
+- name: starship laden
+  ansible.builtin.get_url:
+    url: "https://github.com/starship/starship/releases/download/v{{ baseline_starship_version }}/starship-x86_64-unknown-linux-gnu.tar.gz"
+    dest: "{{ baseline_cache_dir }}/starship-{{ baseline_starship_version }}.tar.gz"
+    checksum: "sha256:{{ baseline_starship_sha256 }}"
+    mode: "0644"
+  delegate_to: localhost
+  become: false
+  run_once: true
+  check_mode: false
+
+- name: oh-my-zsh und Plugins auschecken
+  ansible.builtin.git:
+    repo: "{{ item.repo }}"
+    version: "{{ item.version }}"
+    dest: "{{ baseline_cache_dir }}/src/{{ item.name }}"
+  loop: "{{ baseline_omz_repos }}"
+  loop_control:
+    label: "{{ item.name }} {{ item.version[:12] }}"
+  delegate_to: localhost
+  become: false
+  run_once: true
+  check_mode: false
+
+- name: oh-my-zsh-Paket bauen
+  ansible.builtin.shell: |
+    set -eu
+    d=$(mktemp -d)
+    {% for r in baseline_omz_repos %}
+    mkdir -p "$d/oh-my-zsh/{{ r.dest }}"
+    git -C "{{ baseline_cache_dir }}/src/{{ r.name }}" archive HEAD | tar -x -C "$d/oh-my-zsh/{{ r.dest }}"
+    {% endfor %}
+    echo "{{ baseline_omz_id }}" > "$d/oh-my-zsh/.tk-version"
+    tar -czf "{{ baseline_cache_dir }}/oh-my-zsh-{{ baseline_omz_id }}.tar.gz" -C "$d" oh-my-zsh
+    rm -rf "$d"
+  args:
+    creates: "{{ baseline_cache_dir }}/oh-my-zsh-{{ baseline_omz_id }}.tar.gz"
+    executable: /bin/bash
+  delegate_to: localhost
+  become: false
+  run_once: true
+  check_mode: false
+
+- name: starship-Version im Gast
+  ansible.builtin.command: /usr/local/bin/starship --version
+  register: baseline_starship_have
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: starship installieren
+  ansible.builtin.unarchive:
+    src: "{{ baseline_cache_dir }}/starship-{{ baseline_starship_version }}.tar.gz"
+    dest: /usr/local/bin
+    include: [starship]
+    owner: root
+    group: root
+    mode: "0755"
+  when: ("starship " ~ baseline_starship_version) not in (baseline_starship_have.stdout | default(''))
+
+- name: oh-my-zsh-Stand im Gast
+  ansible.builtin.slurp:
+    src: /usr/share/oh-my-zsh/.tk-version
+  register: baseline_omz_have
+  failed_when: false
+
+- name: Alten oh-my-zsh-Stand entfernen
+  ansible.builtin.file:
+    path: /usr/share/oh-my-zsh
+    state: absent
+  when: (baseline_omz_have.content | default('') | b64decode | trim) != baseline_omz_id
+
+- name: oh-my-zsh installieren
+  ansible.builtin.unarchive:
+    src: "{{ baseline_cache_dir }}/oh-my-zsh-{{ baseline_omz_id }}.tar.gz"
+    dest: /usr/share
+    owner: root
+    group: root
+  when: (baseline_omz_have.content | default('') | b64decode | trim) != baseline_omz_id
+
+- name: starship-Konfiguration
+  ansible.builtin.copy:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - { src: starship.toml, dest: /etc/starship.toml }
+    - { src: starship.zsh, dest: /etc/profile.d/starship.zsh }
+
+- name: Systemweite zshrc
+  ansible.builtin.template:
+    src: zshrc.j2
+    dest: /etc/zsh/zshrc
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: zsh als Login-Shell
+  ansible.builtin.user:
+    name: "{{ item }}"
+    shell: /usr/bin/zsh
+  loop: ["{{ baseline_user }}", root]
+
+- name: Leere .zshrc, damit zsh nicht den Einrichtungsassistenten startet
+  ansible.builtin.copy:
+    dest: "{{ item.home }}/.zshrc"
+    content: "# managed by proxmox-linux-baseline, Einstellungen in /etc/zsh/zshrc\n"
+    owner: "{{ item.user }}"
+    group: "{{ item.user }}"
+    mode: "0644"
+    force: false
+  loop:
+    - { user: "{{ baseline_user }}", home: "/home/{{ baseline_user }}" }
+    - { user: root, home: /root }
+    - { user: root, home: /etc/skel }
+
+- name: zsh als Standard fuer neue Benutzer (adduser)
+  ansible.builtin.lineinfile:
+    path: /etc/adduser.conf
+    regexp: '^#?DSHELL='
+    line: DSHELL=/usr/bin/zsh
+
+- name: zsh als Standard fuer neue Benutzer (useradd)
+  ansible.builtin.lineinfile:
+    path: /etc/default/useradd
+    regexp: '^#?\s*SHELL='
+    line: SHELL=/usr/bin/zsh
+    create: true
+    mode: "0644"
+
+- name: Gruppen lesen
+  ansible.builtin.getent:
+    database: group
+
+- name: Admin-User in der Gruppe docker, falls vorhanden
+  ansible.builtin.user:
+    name: "{{ baseline_user }}"
+    groups: docker
+    append: true
+  when: "'docker' in ansible_facts.getent_group"

@@ -1,0 +1,6 @@
+{{ {
+  'source': 'NetBox (proxmox-linux-baseline, Ansible)',
+  'host': nb | default({}),
+  'backup': ('kein Backup (Testsystem)' if (nb | default({})).get('env') == 'tst' else baseline_backup),
+  'doku': baseline_doku_url ~ '/infrastructure/hosts/' ~ (nb.name | default(inventory_hostname)),
+} | to_nice_json(indent=2) }}
