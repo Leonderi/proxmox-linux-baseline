@@ -1,0 +1,13 @@
+---
+# docker-ce aus dem Docker-Repo, Umstellung von docker.io, live-restore und Log-Grenzen.
+#
+#   ansible-playbook playbooks/docker.yml --limit app-web --check --diff
+#   ansible-playbook playbooks/docker.yml --limit app-web
+#
+# Die Umstellung startet die Container einmal neu. crit-Gaeste nur im abgesprochenen Fenster.
+- name: Docker
+  hosts: baseline
+  become: true
+  serial: 1
+  roles:
+    - docker

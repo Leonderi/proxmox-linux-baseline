@@ -18,6 +18,7 @@ RENDER = "/usr/local/lib/tk/motd-render"
 HOST_JSON = "/etc/tk/host.json"
 APT_CHECK = "/var/lib/tk/apt-check"
 UU_LOG = "/var/log/unattended-upgrades/unattended-upgrades.log"
+DOCKER_PKGS = {"docker-ce", "docker-ce-cli", "containerd.io", "docker-buildx-plugin", "docker-compose-plugin", "docker-ce-rootless-extras"}
 
 # --------------------------------------------------------------------------- Ausgabe
 
@@ -358,7 +359,10 @@ def cmd_updates(_):
         if m:
             name, suites, new, old = m.groups()
             security = "-security" in suites
-            pkgs.append([name, old, new, "Sicherheit" if security else suites.split(",")[0], "ja" if security and uu_active() else "nein"])
+            if name in DOCKER_PKGS:
+                pkgs.append([name, old, new, "Docker", "nein (monatlich)"])
+            else:
+                pkgs.append([name, old, new, "Sicherheit" if security else suites.split(",")[0], "ja" if security and uu_active() else "nein"])
     print()
     table(["Paket", "Installiert", "Neu", "Quelle", "Automatisch"], sorted(pkgs, key=lambda p: (p[3] != "Sicherheit", p[0])), title="Pakete")
 

@@ -1,0 +1,32 @@
+---
+# Docker einheitlich aus dem Repo von Docker (entschieden 2026-11-06).
+# unattended-upgrades fasst dieses Repo nicht an; Updates kommen monatlich per Ansible.
+docker_repo_url: https://download.docker.com/linux/ubuntu
+docker_gpg_url: https://download.docker.com/linux/ubuntu/gpg
+docker_gpg_fingerprint: 9DC858229FC7DD38854AE2D88D81803C0EBFCD88
+docker_cache_dir: "{{ lookup('env', 'HOME') }}/.cache/tk-baseline"
+
+docker_packages:
+  - docker-ce
+  - docker-ce-cli
+  - containerd.io
+  - docker-buildx-plugin
+  - docker-compose-plugin
+
+# Ubuntu-Pakete, die docker-ce ersetzt. Entfernt, nicht gepurgt: /var/lib/docker bleibt.
+docker_ubuntu_packages:
+  - docker.io
+  - docker-compose-v2
+  - docker-buildx
+  - containerd
+  - runc
+
+# Vorgaben fuer /etc/docker/daemon.json. Vorhandene Einstellungen des Gasts (z. B. data-root)
+# bleiben erhalten und gehen vor, nur live-restore wird immer gesetzt.
+docker_daemon_defaults:
+  log-driver: json-file
+  log-opts:
+    max-size: 10m
+    max-file: "3"
+docker_daemon_enforced:
+  live-restore: true

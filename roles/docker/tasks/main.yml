@@ -1,0 +1,175 @@
+---
+# docker-ce aus dem Docker-Repo. Gaeste mit docker.io aus Ubuntu werden umgestellt:
+# laufende Container merken, Pakete tauschen, dieselben Container wieder starten, pruefen.
+# Scheitert etwas, kommt docker.io zurueck (rescue) und der Lauf bricht mit Fehler ab.
+
+- name: Paketstand lesen
+  ansible.builtin.package_facts:
+
+- name: Gaeste ohne Docker auslassen
+  ansible.builtin.meta: end_host
+  when: "'docker.io' not in ansible_facts.packages and 'docker-ce' not in ansible_facts.packages"
+
+- name: Docker-Schluessel auf dem Steuerrechner laden
+  ansible.builtin.get_url:
+    url: "{{ docker_gpg_url }}"
+    dest: "{{ docker_cache_dir }}/docker.asc"
+    mode: "0644"
+  delegate_to: localhost
+  become: false
+  run_once: true
+  check_mode: false
+
+- name: Fingerprint des Docker-Schluessels pruefen
+  ansible.builtin.shell: gpg --show-keys --with-colons "{{ docker_cache_dir }}/docker.asc" | awk -F: '$1 == "fpr" { print $10 }'
+  register: docker_fpr
+  changed_when: false
+  failed_when: docker_gpg_fingerprint not in docker_fpr.stdout_lines
+  delegate_to: localhost
+  become: false
+  run_once: true
+  check_mode: false
+
+- name: Ordner fuer apt-Schluessel
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: "0755"
+
+- name: Docker-Schluessel im Gast
+  ansible.builtin.copy:
+    src: "{{ docker_cache_dir }}/docker.asc"
+    dest: /etc/apt/keyrings/docker.asc
+    mode: "0644"
+
+- name: Docker-Paketquelle
+  ansible.builtin.copy:
+    dest: /etc/apt/sources.list.d/docker.sources
+    content: |
+      # managed by proxmox-linux-baseline (Ansible)
+      Types: deb
+      URIs: {{ docker_repo_url }}
+      Suites: {{ ansible_facts.distribution_release }}
+      Components: stable
+      Architectures: amd64
+      Signed-By: /etc/apt/keyrings/docker.asc
+    mode: "0644"
+  register: docker_source
+
+- name: Alte Einzeilen-Quelle entfernen (sonst doppelt eingetragen)
+  ansible.builtin.file:
+    path: /etc/apt/sources.list.d/docker.list
+    state: absent
+  register: docker_old_list
+
+- name: Paketlisten neu laden
+  ansible.builtin.apt:
+    update_cache: true
+  when: docker_source is changed or docker_old_list is changed
+
+- name: daemon.json lesen
+  ansible.builtin.slurp:
+    src: /etc/docker/daemon.json
+  register: docker_daemon_have
+  failed_when: false
+
+- name: daemon.json schreiben (vorhandene Einstellungen bleiben)
+  ansible.builtin.copy:
+    dest: /etc/docker/daemon.json
+    content: >-
+      {{ docker_daemon_defaults
+         | combine((docker_daemon_have.content | default('e30=') | b64decode | from_json) if docker_daemon_have.content is defined else {})
+         | combine(docker_daemon_enforced)
+         | to_nice_json(indent=2) }}
+    mode: "0644"
+  register: docker_daemon_json
+
+- name: Umstellung von docker.io
+  when: "'docker.io' in ansible_facts.packages and not ansible_check_mode"
+  block:
+    - name: Laufende Container merken
+      ansible.builtin.command: docker ps -q --no-trunc
+      register: docker_running_before
+      changed_when: false
+
+    - name: Images zaehlen
+      ansible.builtin.shell: docker image ls -q --no-trunc | sort -u | wc -l
+      register: docker_images_before
+      changed_when: false
+
+    - name: Ubuntu-Pakete entfernen (Daten bleiben)
+      ansible.builtin.apt:
+        name: "{{ docker_ubuntu_packages }}"
+        state: absent
+
+    - name: docker-ce installieren
+      ansible.builtin.apt:
+        name: "{{ docker_packages }}"
+        state: present
+
+    - name: Docker laeuft
+      ansible.builtin.systemd_service:
+        name: docker
+        enabled: true
+        state: started
+
+    - name: Vorher laufende Container wieder starten
+      ansible.builtin.command: docker start {{ docker_running_before.stdout_lines | join(' ') }}
+      when: docker_running_before.stdout_lines | length > 0
+
+    - name: Alle vorher laufenden Container laufen wieder
+      ansible.builtin.shell: |
+        sleep 5
+        for id in {{ docker_running_before.stdout_lines | join(' ') }}; do
+          [ "$(docker inspect -f '{{ '{{' }}.State.Running{{ '}}' }}' "$id")" = true ] || { echo "laeuft nicht: $id"; exit 1; }
+        done
+      changed_when: false
+      when: docker_running_before.stdout_lines | length > 0
+
+    - name: Keine Images verloren
+      ansible.builtin.shell: docker image ls -q --no-trunc | sort -u | wc -l
+      register: docker_images_after
+      changed_when: false
+      failed_when: docker_images_after.stdout | int < docker_images_before.stdout | int
+
+  rescue:
+    - name: Rueckweg auf docker.io
+      ansible.builtin.apt:
+        name: "{{ docker_packages }}"
+        state: absent
+      ignore_errors: true
+
+    - name: docker.io wieder installieren
+      ansible.builtin.apt:
+        name: [docker.io, docker-compose-v2, containerd, runc]
+        state: present
+
+    - name: Container nach dem Rueckweg starten
+      ansible.builtin.shell: |
+        systemctl start docker
+        {% if docker_running_before.stdout_lines | default([]) | length > 0 %}
+        docker start {{ docker_running_before.stdout_lines | join(' ') }}
+        {% endif %}
+
+    - name: Abbruch melden
+      ansible.builtin.fail:
+        msg: "Umstellung auf docker-ce gescheitert, docker.io wieder aktiv. Ausgabe der fehlgeschlagenen Aufgabe pruefen."
+
+- name: docker-ce vorhanden (Gaeste, die schon umgestellt sind)
+  ansible.builtin.apt:
+    name: "{{ docker_packages }}"
+    state: present
+  when: "'docker.io' not in ansible_facts.packages"
+
+- name: daemon.json neu laden (live-restore wirkt sofort, Log-Grenzen fuer neue Container)
+  ansible.builtin.systemd_service:
+    name: docker
+    state: reloaded
+  when: docker_daemon_json is changed and 'docker.io' not in ansible_facts.packages and not ansible_check_mode
+
+- name: live-restore aktiv
+  ansible.builtin.command: docker info --format '{{ '{{' }}.LiveRestoreEnabled{{ '}}' }}'
+  register: docker_live_restore
+  changed_when: false
+  failed_when: docker_live_restore.stdout | trim != 'true'
+  when: not ansible_check_mode

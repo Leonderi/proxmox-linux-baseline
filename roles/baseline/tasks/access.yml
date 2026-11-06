@@ -34,6 +34,8 @@
       PasswordAuthentication no
       KbdInteractiveAuthentication no
       PermitRootLogin no
+      # letzte Anmeldung zeigt das tk-MOTD selbst
+      PrintLastLog no
     owner: root
     group: root
     mode: "0644"

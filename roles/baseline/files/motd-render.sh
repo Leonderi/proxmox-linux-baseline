@@ -99,13 +99,31 @@ tk_motd_problems() {
     done < <(tk_docker ps -a --format '{{.Names}}|{{.Status}}')
 }
 
+# Vorherige Anmeldung des Benutzers ("zeit|herkunft"), sshd zeigt sie selbst nicht mehr (PrintLastLog no)
+tk_last_login() {
+    last --time-format iso -w -n 2 "${USER:-$(id -un)}" 2>/dev/null | awk '
+        NF >= 4 && $1 != "wtmp" {
+            n++
+            if (n == 2) { if ($3 ~ /^[0-9][0-9][0-9][0-9]-/) print $3 "|lokal"; else print $4 "|" $3; exit }
+        }'
+}
+
+tk_human_when() { # ISO-Zeit -> "heute 18:22", "gestern 09:10", "Fr 30.10. 18:22"
+    local day
+    day=$(date -d "$1" +%F 2>/dev/null) || { echo "$1"; return; }
+    if [[ "$day" == "$(date +%F)" ]]; then date -d "$1" '+heute %H:%M'
+    elif [[ "$day" == "$(date -d yesterday +%F)" ]]; then date -d "$1" '+gestern %H:%M'
+    else date -d "$1" '+%a %d.%m. %H:%M'; fi
+}
+
 tk_label() { printf '  %s%-8s%s ' "$C_L" "$1" "$C_R"; }
 
 tk_motd_main() {
     local line distro load mem_used mem_total mem_pct rows w1=0 w2=0 w3=0 w4=0 prefix first=1
-    local name mount kind size used total pct state total_c running unhealthy problems
+    local name mount kind size used total pct state total_c running unhealthy problems login
     tk_colors
 
+    printf '\n'
     if [[ -r "$TK_HEAD" ]]; then
         while IFS= read -r line; do
             line="${line//@P@/$C_P}"; line="${line//@L@/$C_L}"; line="${line//@V@/$C_V}"
@@ -120,6 +138,10 @@ tk_motd_main() {
     load=""
     tk_is_lxc || load=" ${C_D}·${C_R} Load $(cut -d' ' -f1 /proc/loadavg)"
     printf '\n'; tk_label System; printf '%s %s·%s up %s%s\n' "$distro" "$C_D" "$C_R" "$(tk_human_uptime)" "$load"
+    login=$(tk_last_login)
+    if [[ -n "$login" ]]; then
+        tk_label Login; printf 'zuletzt %s %s·%s von %s\n' "$(tk_human_when "${login%%|*}")" "$C_D" "$C_R" "${login#*|}"
+    fi
 
     # Spaltenbreiten der Plattenzeilen, damit RAM- und Plattenbalken untereinander stehen
     rows=$(tk_disk_rows)
