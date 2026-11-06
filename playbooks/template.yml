@@ -32,6 +32,13 @@
     - baseline
 
   post_tasks:
+    - name: Alle Updates einspielen, damit jeder Klon aktuell startet
+      ansible.builtin.apt:
+        upgrade: dist
+        update_cache: true
+        autoremove: true
+      when: not ansible_check_mode
+
     - name: Versiegeln (nur mit -e seal=true)
       when: seal | bool and not ansible_check_mode
       block:

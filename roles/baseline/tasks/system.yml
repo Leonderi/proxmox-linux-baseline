@@ -38,6 +38,55 @@
   loop: [qemu-guest-agent, fstrim.timer, "{{ 'chrony' if baseline_timesync == 'chrony' else 'systemd-timesyncd' }}"]
   when: not baseline_is_lxc
 
+# Zeitquelle ist das OPNsense-Gateway der Zone (VM-Baustandard 5.1), nicht das Internet.
+- name: Zeitquelle = Gateway der Zone
+  ansible.builtin.set_fact:
+    baseline_ntp_server: "{{ ansible_facts.default_ipv4.gateway | default('') }}"
+
+- name: systemd-timesyncd auf das Gateway
+  when: not baseline_is_lxc and baseline_timesync == 'systemd-timesyncd' and baseline_ntp_server | length > 0
+  block:
+    - name: Ordner fuer timesyncd-Drop-ins
+      ansible.builtin.file:
+        path: /etc/systemd/timesyncd.conf.d
+        state: directory
+        mode: "0755"
+
+    - name: timesyncd-Drop-in
+      ansible.builtin.copy:
+        dest: /etc/systemd/timesyncd.conf.d/10-tk-baseline.conf
+        content: |
+          # managed by proxmox-linux-baseline (Ansible): Zeit vom Gateway der Zone
+          [Time]
+          NTP={{ baseline_ntp_server }}
+          FallbackNTP=
+        mode: "0644"
+      notify: Restart timesyncd
+
+- name: chrony auf das Gateway (Standard ab Ubuntu 26.04)
+  when: not baseline_is_lxc and baseline_timesync == 'chrony' and baseline_ntp_server | length > 0
+  block:
+    - name: chrony-Quelle Gateway
+      ansible.builtin.copy:
+        dest: /etc/chrony/sources.d/10-tk-gateway.sources
+        content: |
+          # managed by proxmox-linux-baseline (Ansible): Zeit vom Gateway der Zone
+          server {{ baseline_ntp_server }} iburst
+        mode: "0644"
+      notify: Restart chrony
+
+    - name: Ubuntu-Pools und NTS abschalten (Internet-NTP ist gesperrt)
+      ansible.builtin.copy:
+        dest: "{{ item }}"
+        content: |
+          # abgeschaltet von proxmox-linux-baseline (Ansible): Zeit kommt vom Gateway der Zone,
+          # siehe 10-tk-gateway.sources. Die Firewall laesst NTP/NTS ins Internet nicht durch.
+        mode: "0644"
+      loop:
+        - /etc/chrony/sources.d/ubuntu-ntp-pools.sources
+        - /etc/chrony/conf.d/ubuntu-nts.conf
+      notify: Restart chrony
+
 - name: Ordner fuer journald-Drop-ins
   ansible.builtin.file:
     path: /etc/systemd/journald.conf.d
