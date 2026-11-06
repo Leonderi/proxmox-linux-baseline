@@ -1,0 +1,42 @@
+name: tk bauen und prüfen
+
+# Qualitätsschranke für tk: Format, Clippy, Tests, Release-Build im selben Image, mit dem auch der
+# Ansible-Steuerrechner baut (roles/baseline/defaults/main.yml, baseline_tk_builder_image).
+on:
+  push:
+    paths:
+      - 'tk/**'
+      - '.forgejo/workflows/tk.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: docker
+    container:
+      image: rust:1.99.1-alpine3.23@sha256:51e1b72c7f236093c084f6e3051239f033fba9e4c0c1430cc2ed479d0a3bd14c
+    steps:
+      - name: Werkzeuge installieren
+        run: |
+          apk add --no-cache git
+          rustup component add rustfmt clippy
+
+      - name: Checkout
+        run: |
+          git clone https://any:${{ secrets.GITHUB_TOKEN }}@git.tk-thran.com/${{ github.repository }}.git .
+          git checkout --detach ${{ github.sha }}
+
+      - name: Format
+        run: cd tk && cargo fmt --check
+
+      - name: Clippy
+        run: cd tk && cargo clippy --release --locked -- -D warnings
+
+      - name: Tests
+        run: cd tk && cargo test --release --locked
+
+      - name: Release-Build
+        run: |
+          cd tk
+          TK_COMMIT="${GITHUB_SHA:0:7}" cargo build --release --locked
+          ls -l target/release/tk
+          ./target/release/tk version

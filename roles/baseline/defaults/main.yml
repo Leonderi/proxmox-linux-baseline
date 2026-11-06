@@ -28,6 +28,9 @@ baseline_omz_repos:
     dest: custom/plugins/zsh-autocomplete
 baseline_cache_dir: "{{ lookup('env', 'HOME') }}/.cache/tk-baseline"
 
+# tk (Rust): Bau-Image, identisch mit .forgejo/workflows/tk.yml
+baseline_tk_builder_image: "rust:1.99.1-alpine3.23@sha256:51e1b72c7f236093c084f6e3051239f033fba9e4c0c1430cc2ed479d0a3bd14c"
+
 # MOTD
 baseline_brand: tk-thran
 baseline_doku_url: https://doku.tk-thran.com

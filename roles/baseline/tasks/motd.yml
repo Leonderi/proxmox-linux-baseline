@@ -32,17 +32,53 @@
     group: root
     mode: "0644"
 
-- name: Skripte
+# tk ist ein Rust-Binary (tk/). Der Steuerrechner baut es aus dem committeten Stand im festen
+# Image baseline_tk_builder_image, Version = letzter Commit, der tk/ geaendert hat.
+- name: tk-Version (letzter Commit an tk/)
+  ansible.builtin.command: git -C "{{ playbook_dir }}/.." log -1 --format=%h -- tk
+  register: baseline_tk_commit
+  changed_when: false
+  delegate_to: localhost
+  become: false
+  run_once: true
+  check_mode: false
+
+- name: tk bauen (nur wenn diese Version noch nicht im Cache liegt)
+  ansible.builtin.shell: |
+    set -eu
+    out="{{ baseline_cache_dir }}/tk-{{ baseline_tk_commit.stdout }}"
+    work=$(mktemp -d)
+    git -C "{{ playbook_dir }}/.." archive "{{ baseline_tk_commit.stdout }}" tk | tar -x -C "$work"
+    mkdir -p "{{ baseline_cache_dir }}/cargo"
+    docker run --rm --user "$(id -u):$(id -g)" -e CARGO_HOME=/cargo -e TK_COMMIT="{{ baseline_tk_commit.stdout }}" \
+      -v "{{ baseline_cache_dir }}/cargo:/cargo" -v "$work/tk:/src" -w /src \
+      "{{ baseline_tk_builder_image }}" cargo build --release --locked
+    install -m 0755 "$work/tk/target/release/tk" "$out.tmp"
+    mv "$out.tmp" "$out"
+    rm -rf "$work"
+  args:
+    creates: "{{ baseline_cache_dir }}/tk-{{ baseline_tk_commit.stdout }}"
+    executable: /bin/bash
+  delegate_to: localhost
+  become: false
+  run_once: true
+  check_mode: false
+
+- name: tk installieren
   ansible.builtin.copy:
-    src: "{{ item.src }}"
-    dest: "{{ item.dest }}"
+    src: "{{ baseline_cache_dir }}/tk-{{ baseline_tk_commit.stdout }}"
+    dest: /usr/local/bin/tk
     owner: root
     group: root
     mode: "0755"
-  loop:
-    - { src: motd-render.sh, dest: /usr/local/lib/tk/motd-render }
-    - { src: apt-check-cache.sh, dest: /usr/local/lib/tk/apt-check-cache }
-    - { src: tk.py, dest: /usr/local/bin/tk }
+
+- name: Zaehler fuer offene Updates (apt-Hook)
+  ansible.builtin.copy:
+    src: apt-check-cache.sh
+    dest: /usr/local/lib/tk/apt-check-cache
+    owner: root
+    group: root
+    mode: "0755"
 
 - name: Login-Hook
   ansible.builtin.copy:
@@ -52,10 +88,15 @@
       case $- in *i*) ;; *) return ;; esac
       [ -n "${TK_MOTD_RENDERED:-}" ] && return
       export TK_MOTD_RENDERED=1
-      [ -x /usr/local/lib/tk/motd-render ] && /usr/local/lib/tk/motd-render
+      [ -x /usr/local/bin/tk ] && /usr/local/bin/tk motd
     owner: root
     group: root
     mode: "0644"
+
+- name: Bash-Renderer der Python-Fassung entfernen (tk motd ersetzt ihn)
+  ansible.builtin.file:
+    path: /usr/local/lib/tk/motd-render
+    state: absent
 
 - name: Alten MOTD-Renderer der Skript-Baseline entfernen
   ansible.builtin.file:
