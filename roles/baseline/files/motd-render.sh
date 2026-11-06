@@ -133,9 +133,13 @@ tk_motd_main() {
 
     read -r mem_used mem_total < <(free -b | awk '/^Mem:/ { print $3, $2 }')
     mem_pct=$((mem_used * 100 / (mem_total > 0 ? mem_total : 1)))
-    prefix=$((w1 + w2 + w3 + w4 + 6))
+    # RAM wie eine Plattenzeile: Bezeichnung in der Spalte von Name und Mountpoint
+    prefix=$((w1 + w2 + w3 + 4))
+    ((prefix < 15)) && prefix=15
+    ((w4 < 9)) && w4=9
     tk_label RAM
-    printf "%${prefix}s  %s %3d %%\n" "$(numfmt --to=iec "$mem_used")/$(numfmt --to=iec "$mem_total")" "$(tk_bar "$mem_pct")" "$mem_pct"
+    printf "%s%-${prefix}s%s  %${w4}s  %s %3d %%\n" "$C_D" "Arbeitsspeicher" "$C_R" \
+        "$(numfmt --to=iec "$mem_used")/$(numfmt --to=iec "$mem_total")" "$(tk_bar "$mem_pct")" "$mem_pct"
 
     while IFS='|' read -r name mount kind size used total pct state; do
         [[ -n "$mount" ]] || continue
