@@ -12,6 +12,8 @@ Entscheidungen und Einordnung: [Zielarchitektur HZ1, Linux-Baseline](https://dok
 | `inventory/netbox.py` | dynamisches Inventar, siehe unten |
 | `playbooks/baseline.yml` | wendet die Rolle auf die Gruppe `baseline` an, ein Gast nach dem anderen |
 | `roles/baseline/` | Grundausstattung |
+| `tk/` | Werkzeugkasten und MOTD als Rust-Binary |
+| `.forgejo/workflows/tk.yml` | CI für `tk`: Format, Clippy, Tests, Release-Build |
 | `roles/docker/`, `playbooks/docker.yml` | Docker einheitlich aus dem Repo von Docker, Umstellung von `docker.io` |
 | `bootstrap/bootstrap-guest.sh` | einmalig je Gast: Ansible-Schlüssel und `sudo` ohne Passwort |
 | `scripts/setup-zsh-baseline.sh` | **veraltet**, altes Einmal-Skript für cloud-init. Entfällt, sobald die Vorlage VM 900 aus der Rolle gebaut wird |
@@ -40,8 +42,8 @@ Umgebung: `TK_DOKU_REPO` (Standard `~/workdir/doku`), `NETBOX_MCP_URL`, `NETBOX_
 | System | Basispakete, `journald` höchstens 500 MB, Zeitzone `Europe/Berlin`, Locale `de_DE.UTF-8`, Tastatur `de`. Nur VMs: Guest Agent, `fstrim.timer`, `systemd-timesyncd` |
 | Updates | `unattended-upgrades` täglich, nur Sicherheitsupdates (Ubuntu-Vorgabe), **ohne automatischen Neustart**. `needrestart` mit Ubuntu-Vorgabe (Docker ausgenommen), in LXCs ohne Kernel-Hinweise. Zähler offener Updates nach jedem apt-Lauf in `/var/lib/tk/apt-check` |
 | Shell | zsh mit oh-my-zsh, `zsh-autosuggestions`, `zsh-autocomplete` und starship für `alexander` und root. Versionen fest in `defaults/main.yml`. Der Steuerrechner lädt sie und prüft die Prüfsumme, die Gäste holen nichts aus dem Internet |
-| MOTD | Banner `tk-thran` und Steckbrief aus NetBox (`/etc/tk/motd-head`, `/etc/tk/host.json`), darunter Systemzustand, Warnblock nur bei Problemen |
-| `tk` | `/usr/local/bin/tk` |
+| MOTD | Banner `tk-thran` und Steckbrief aus NetBox (`/etc/tk/motd-head`, `/etc/tk/host.json`, `/etc/tk/disks`), darunter Systemzustand, Warnblock nur bei Problemen. Ausgegeben von `tk motd` beim Login |
+| `tk` | `/usr/local/bin/tk`, statisches Rust-Binary |
 
 ### MOTD
 
@@ -71,7 +73,7 @@ Der Warnblock erscheint bei: Neustart nötig, offenen Sicherheitsupdates, fehlge
 
 ### tk
 
-`/usr/local/bin/tk` (Python) gibt Rahmentabellen im Stil von `cscli` aus, Zustände farbig.
+`/usr/local/bin/tk` ist ein statisches Rust-Binary (musl, ca. 820 KB, entschieden 2026-11-06). Es braucht auf dem Gast nichts außer den Werkzeugen, die es abfragt (`docker`, `systemctl`, `ip`, `ss`, `apt`). Plattenbelegung und RAM liest es direkt (`statvfs`, `/proc/meminfo`). Ausgaben als Rahmentabellen im Stil von `cscli`, Zustände farbig.
 
 | Befehl | Zeigt |
 | --- | --- |
@@ -83,7 +85,18 @@ Der Warnblock erscheint bei: Neustart nötig, offenen Sicherheitsupdates, fehlge
 | `tk net` | Schnittstellen, Route, DNS, lauschende Ports |
 | `tk doctor` | Prüfliste der Baseline mit ✓ und ⚠ |
 | `tk info` | Steckbrief aus NetBox mit Diensten und Platten |
+| `tk motd` | das MOTD, läuft bei jeder Anmeldung |
 | `tk table` | TSV von stdin als Tabelle, für eigene Skripte |
+| `tk version` | Version und Commit |
+
+**Bau und Verteilung.** Bei jeder Änderung an `tk/` prüft Forgejo Actions Format, Clippy (`-D warnings`) und Tests und baut das Release-Binary. Verteilt wird nicht das CI-Ergebnis, sondern der Ansible-Steuerrechner baut selbst: aus dem committeten Stand (`git archive`, Version = letzter Commit an `tk/`), im selben Image `rust:1.99.1-alpine3.23` mit gepinntem Digest (`baseline_tk_builder_image`), und nur, wenn die Version noch nicht im Cache `~/.cache/tk-baseline/` liegt. Grund: Das Repo ist privat, für Release-Anhänge bräuchte Ansible einen gespeicherten Token. Mit Semaphore auf `ops-core` lässt sich auf Releases umstellen. Voraussetzung auf dem Steuerrechner: Docker.
+
+Lokal bauen und testen, im Repo:
+
+```bash
+cd tk
+docker run --rm --user "$(id -u):$(id -g)" -e CARGO_HOME=/cargo -v ~/.cache/tk-baseline/cargo:/cargo -v "$PWD:/src" -w /src rust:1.99.1-alpine3.23 cargo test --release --locked
+```
 
 ## Docker
 
@@ -102,6 +115,7 @@ Umgestellt am 2026-11-06: 380, 510, 370, 110, 340, 250, 210; nur Konfiguration a
 | Lücke | Dauer | Wen es trifft |
 | --- | --- | --- |
 | Start des neuen Daemons baut die Portweiterleitungen neu auf | etwa 1 s | alle veröffentlichten Ports |
+| Der neue Daemon legt ein neues Socket an | bis zum Neustart des Containers | Container, die `/var/run/docker.sock` einbinden (z. B. `socket-proxy` für Traefik). Die Rolle startet sie seit `1e5f59c` gezielt neu |
 | Während des Paketwechsels läuft kein Daemon, damit gibt es keinen eingebauten DNS zwischen den Containern | etwa 20 s (`dpkg`) | Dienste, die ihre Datenbank bei jeder Anfrage über den Containernamen suchen, z. B. Nextcloud und Authentik |
 
 ## Verwendung
