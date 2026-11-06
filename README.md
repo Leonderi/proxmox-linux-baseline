@@ -11,12 +11,13 @@ Entscheidungen und Einordnung: [Zielarchitektur HZ1, Linux-Baseline](https://dok
 | `ansible.cfg` | Inventar, Benutzer `alexander`, Schlüssel `~/.ssh/id_ed25519_ansible` |
 | `inventory/netbox.py` | dynamisches Inventar, siehe unten |
 | `playbooks/baseline.yml` | wendet die Rolle auf die Gruppe `baseline` an, ein Gast nach dem anderen |
+| `playbooks/template.yml` | baut die Vorlage: Rolle auf eine Bau-VM, Updates, mit `-e seal=true` versiegeln |
 | `roles/baseline/` | Grundausstattung |
 | `tk/` | Werkzeugkasten und MOTD als Rust-Binary |
 | `.forgejo/workflows/tk.yml` | CI für `tk`: Format, Clippy, Tests, Release-Build |
 | `roles/docker/`, `playbooks/docker.yml` | Docker einheitlich aus dem Repo von Docker, Umstellung von `docker.io` |
 | `bootstrap/bootstrap-guest.sh` | einmalig je Gast: Ansible-Schlüssel und `sudo` ohne Passwort |
-| `scripts/setup-zsh-baseline.sh` | **veraltet**, altes Einmal-Skript für cloud-init. Entfällt, sobald die Vorlage VM 900 aus der Rolle gebaut wird |
+| `scripts/setup-zsh-baseline.sh` | **veraltet**, altes Einmal-Skript für cloud-init der Vorlage 900. Entfällt mit dem Löschen von 900 |
 
 ## Inventar
 
@@ -118,6 +119,45 @@ Umgestellt am 2026-11-06: 380, 510, 370, 110, 340, 250, 210; nur Konfiguration a
 | Der neue Daemon legt ein neues Socket an | bis zum Neustart des Containers | Container, die `/var/run/docker.sock` einbinden (z. B. `socket-proxy` für Traefik). Die Rolle startet sie seit `1e5f59c` gezielt neu |
 | Während des Paketwechsels läuft kein Daemon, damit gibt es keinen eingebauten DNS zwischen den Containern | etwa 20 s (`dpkg`) | Dienste, die ihre Datenbank bei jeder Anfrage über den Containernamen suchen, z. B. Nextcloud und Authentik |
 
+## Vorlage
+
+Vorlage `901` (`ubuntu26-template-base`, Ubuntu 26.04 LTS), gebaut am 2026-11-06. Neue VMs nur als Vollklon (`qm clone 901 <vmid> --full 1`).
+
+Bau, auf `pve1`:
+
+```bash
+B=https://cloud-images.ubuntu.com/releases/resolute/release
+curl -fsSLO $B/SHA256SUMS && curl -fsSLO $B/ubuntu-26.04-server-cloudimg-amd64.img
+grep ' \*\?ubuntu-26.04-server-cloudimg-amd64.img$' SHA256SUMS | sha256sum -c -
+qm create 901 --name ubuntu26-template-base --ostype l26 --machine q35 --bios ovmf \
+  --efidisk0 local-lvm:0,efitype=4m,pre-enrolled-keys=0 --cpu host --cores 2 --memory 2048 --balloon 0 \
+  --scsihw virtio-scsi-single --net0 virtio,bridge=vmbr2,tag=40 --serial0 socket \
+  --agent enabled=1,fstrim_cloned_disks=1 --tags template
+qm importdisk 901 ubuntu-26.04-server-cloudimg-amd64.img local-lvm
+qm set 901 --scsi0 local-lvm:vm-901-disk-1,discard=on,iothread=1,ssd=1 --boot order=scsi0 --ide2 local-lvm:cloudinit
+qm resize 901 scsi0 16G
+qm set 901 --ciuser alexander --sshkeys keys.pub --ipconfig0 ip=10.40.40.90/24,gw=10.40.40.1 --nameserver 10.40.40.1 --ciupgrade 0
+qm start 901
+```
+
+`keys.pub` enthält den Admin-Schlüssel und `ansible@ops-devbox`. Auf dem Steuerrechner:
+
+```bash
+ansible-playbook -i 10.40.40.90, playbooks/template.yml
+ansible-playbook -i 10.40.40.90, playbooks/template.yml -e seal=true
+```
+
+Danach auf `pve1` Netz zurücksetzen (ins Leere, damit ein vergessener Netzschritt beim Klonen auffällt) und zur Vorlage machen:
+
+```bash
+qm set 901 --net0 virtio,bridge=vmbr2 --ipconfig0 ip=dhcp --delete nameserver
+qm template 901
+```
+
+Pflicht danach: ein Test-Klon (Hostname, eigene `machine-id`, neue SSH-Hostschlüssel, Zeit vom Gateway, `tk doctor` ohne Warnungen), dann löschen.
+
+Auf Ubuntu 26.04 geprüft: `sudo-rs` (Drop-in mit `visudo -cf`), Rust-coreutils (`tk` nutzt sie nicht), Python 3.14 mit ansible-core 2.16, chrony mit dem Gateway als Quelle.
+
 ## Verwendung
 
 Steuerrechner ist die Dev-VM 210 (`ops-devbox`), bis Semaphore auf `ops-core` läuft. Die Firewall-Regel `4470` (`OPS -> Zonen | tcp/22 Ansible | ops-devbox`) erlaubt SSH in die Zonen EDGE, APP, MAIL und GAME.
@@ -129,7 +169,7 @@ sudo apt-get install -y ansible-core
 ssh-keygen -t ed25519 -C ansible@ops-devbox -f ~/.ssh/id_ed25519_ansible
 ```
 
-Neuer Gast, einmalig, auf `pve1`:
+Bestandsgast ohne Baseline, einmalig, auf `pve1` (Klone aus Vorlage 901 brauchen das nicht):
 
 ```bash
 pct exec <vmid> -- bash -s < bootstrap/bootstrap-guest.sh
