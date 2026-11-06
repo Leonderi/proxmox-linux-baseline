@@ -11,7 +11,7 @@ eine Abbildung von NetBox auf Host-Daten gibt. Ablauf:
 
 Umgebung:
   TK_DOKU_REPO          Pfad zum Doku-Repo (Standard ~/workdir/doku)
-  NETBOX_MCP_URL        MCP-Endpunkt (Standard http://10.40.40.40:8050/mcp)
+  NETBOX_MCP_URL        MCP-Endpunkt (Standard http://netbox.hz1.tkth.eu:8050/mcp)
   NETBOX_TOKEN          statt MCP die REST-API mit Token verwenden
   TK_INVENTORY_OFFLINE  1 = NetBox nicht fragen, nur den Export aus dem Doku-Repo lesen
 
@@ -28,7 +28,7 @@ DOKU = Path(os.environ.get("TK_DOKU_REPO", Path.home() / "workdir" / "doku"))
 EXPORTER = DOKU / ".vitepress" / "scripts" / "netbox-hosts.mjs"
 FALLBACK = DOKU / "infrastructure" / "inventory" / "netbox-hosts.json"
 CACHE = Path.home() / ".cache" / "tk-baseline" / "netbox-hosts.json"
-MCP_URL = os.environ.get("NETBOX_MCP_URL", "http://10.40.40.40:8050/mcp")
+MCP_URL = os.environ.get("NETBOX_MCP_URL", "http://netbox.hz1.tkth.eu:8050/mcp")
 
 # Gaeste, die sich selbst verwalten oder kein Linux sind, bleiben draussen.
 # 850 Saltbox: eigene Verwaltung (Entscheidung 2026-11-06).
