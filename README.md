@@ -93,7 +93,16 @@ Entschieden am 2026-11-06: überall `docker-ce` aus dem Repo von Docker. Die Rol
 2. `daemon.json` mit `live-restore` und Log-Grenzen (`10m` × 3) schreiben. Vorhandene Einstellungen wie `data-root` bleiben.
 3. Auf Gästen mit `docker.io`: `live-restore` per Reload aktivieren, laufende Container merken, Dienst und Socket stoppen, Ubuntu-Pakete entfernen (`/var/lib/docker` bleibt), `docker-ce` installieren, Socket und Dienst frisch starten, prüfen, dass jeder vorher laufende Container läuft und kein Image fehlt. Scheitert etwas, kommt `docker.io` zurück und der Lauf bricht ab.
 
-Updates kommen nicht über `unattended-upgrades`, sondern monatlich per Ansible. Erprobt auf LXC 380: Caddy lief beim Wechsel weiter, die Website war nicht unterbrochen.
+Updates kommen nicht über `unattended-upgrades`, sondern monatlich per Ansible.
+
+Ausgenommen (`docker_exclude_vmids`, `docker_keep_ubuntu_vmids`): Mailcow (330) mit eigenem Update-Ablauf und die Gäste, die bis zu ihrem Umzug nach `ops-core`/`app-tools` bei `docker.io` bleiben (220, 240, 320, 360, 390, 520).
+
+Umgestellt am 2026-11-06: 380, 510, 370, 110, 340, 250, 210; nur Konfiguration auf 310 und 800. Die Container liefen überall ohne Neustart durch. Zwei Lücken bleiben:
+
+| Lücke | Dauer | Wen es trifft |
+| --- | --- | --- |
+| Start des neuen Daemons baut die Portweiterleitungen neu auf | etwa 1 s | alle veröffentlichten Ports |
+| Während des Paketwechsels läuft kein Daemon, damit gibt es keinen eingebauten DNS zwischen den Containern | etwa 20 s (`dpkg`) | Dienste, die ihre Datenbank bei jeder Anfrage über den Containernamen suchen, z. B. Nextcloud und Authentik |
 
 ## Verwendung
 
