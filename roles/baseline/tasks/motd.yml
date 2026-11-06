@@ -79,7 +79,9 @@
 
 - name: Fehlgeschlagenen motd-news-Lauf vergessen
   ansible.builtin.shell: |
-    if systemctl is-failed --quiet motd-news.service; then systemctl reset-failed motd-news.service; echo reset; fi
+    for u in motd-news.service motd-news.timer; do
+      if systemctl is-failed --quiet "$u"; then systemctl reset-failed "$u"; echo reset; fi
+    done
   register: baseline_motd_news
   changed_when: "'reset' in baseline_motd_news.stdout"
 
