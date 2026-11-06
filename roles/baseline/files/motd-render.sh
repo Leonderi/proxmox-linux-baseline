@@ -140,7 +140,7 @@ tk_motd_main() {
     printf '\n'; tk_label System; printf '%s %s·%s up %s%s\n' "$distro" "$C_D" "$C_R" "$(tk_human_uptime)" "$load"
     login=$(tk_last_login)
     if [[ -n "$login" ]]; then
-        tk_label Login; printf 'zuletzt %s %s·%s von %s\n' "$(tk_human_when "${login%%|*}")" "$C_D" "$C_R" "${login#*|}"
+        tk_label Login; printf 'zuletzt %s von %s\n' "$(tk_human_when "${login%%|*}")" "${login#*|}"
     fi
 
     # Spaltenbreiten der Plattenzeilen, damit RAM- und Plattenbalken untereinander stehen
