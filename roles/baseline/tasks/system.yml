@@ -29,6 +29,12 @@
   loop: [qemu-guest-agent, fstrim.timer, systemd-timesyncd]
   when: not baseline_is_lxc
 
+- name: Ordner fuer journald-Drop-ins
+  ansible.builtin.file:
+    path: /etc/systemd/journald.conf.d
+    state: directory
+    mode: "0755"
+
 - name: journald begrenzen
   ansible.builtin.copy:
     dest: /etc/systemd/journald.conf.d/10-tk-baseline.conf
