@@ -88,6 +88,19 @@
 - name: Umstellung von docker.io
   when: "'docker.io' in ansible_facts.packages and not ansible_check_mode"
   block:
+    # live-restore zuerst im laufenden docker.io einschalten (Reload, kein Neustart). Dann laufen
+    # die Container beim Paketwechsel weiter und der neue Daemon uebernimmt sie (LXC 380, 2026-11-06).
+    - name: live-restore im laufenden docker.io aktivieren
+      ansible.builtin.systemd_service:
+        name: docker
+        state: reloaded
+
+    - name: live-restore ist aktiv
+      ansible.builtin.command: docker info --format '{{ '{{' }}.LiveRestoreEnabled{{ '}}' }}'
+      register: docker_lr_before
+      changed_when: false
+      failed_when: docker_lr_before.stdout | trim != 'true'
+
     - name: Laufende Container merken
       ansible.builtin.command: docker ps -q --no-trunc
       register: docker_running_before
