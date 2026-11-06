@@ -1,0 +1,65 @@
+---
+# Vorlage bauen: Rolle baseline auf eine frische Bau-VM aus dem Cloud-Image, danach versiegeln.
+#
+#   ansible-playbook -i 10.40.40.90, playbooks/template.yml --check --diff
+#   ansible-playbook -i 10.40.40.90, playbooks/template.yml -e seal=true
+#
+# Die Bau-VM steht nicht in NetBox. Der Steckbrief kennzeichnet sie als Vorlage; nach dem Klonen
+# ersetzt der normale Lauf der Rolle (playbooks/baseline.yml) ihn durch die Angaben aus NetBox.
+- name: Vorlage mit Linux-Baseline
+  hosts: all
+  become: true
+  vars:
+    seal: false
+    nb:
+      name: "{{ template_name | default('ubuntu26-template') }}"
+      vmid: "{{ template_vmid | default(901) }}"
+      typ: VM
+      zone: "–"
+      vlan: null
+      ip: "–"
+      description: "Vorlage. Nach dem Klonen playbooks/baseline.yml laufen lassen"
+      tags: [template]
+      class: null
+      env: null
+      fqdns: []
+      services: []
+      disks:
+        - { name: scsi0, sizeGb: 16, storage: local-lvm, mountpoint: /, description: Systemdisk }
+      netbox: null
+    baseline_backup: "Vorlage, kein Backup"
+  roles:
+    - baseline
+
+  post_tasks:
+    - name: Versiegeln (nur mit -e seal=true)
+      when: seal | bool and not ansible_check_mode
+      block:
+        - name: apt aufraeumen
+          ansible.builtin.shell: apt-get clean && rm -rf /var/lib/apt/lists/*
+          changed_when: true
+
+        - name: cloud-init zuruecksetzen, machine-id leeren (Klone bekommen eigene)
+          ansible.builtin.command: cloud-init clean --logs --seed --machine-id
+          changed_when: true
+
+        - name: SSH-Hostschluessel entfernen (cloud-init erzeugt je Klon neue)
+          ansible.builtin.shell: rm -f /etc/ssh/ssh_host_*
+          changed_when: true
+
+        - name: Verlaeufe, Journal und Zaehler leeren
+          ansible.builtin.shell: |
+            rm -f /root/.zsh_history /home/*/.zsh_history /root/.bash_history /home/*/.bash_history /var/lib/tk/apt-check
+            journalctl --rotate >/dev/null 2>&1 || true
+            journalctl --vacuum-time=1s >/dev/null 2>&1 || true
+            truncate -s 0 /var/log/wtmp /var/log/lastlog /var/log/btmp 2>/dev/null || true
+          changed_when: true
+
+        - name: Freien Platz an den Thin-Pool zurueckgeben
+          ansible.builtin.command: fstrim -av
+          changed_when: true
+
+        - name: Ausschalten
+          ansible.builtin.shell: sleep 2 && systemctl poweroff
+          async: 10
+          poll: 0
