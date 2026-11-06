@@ -91,10 +91,8 @@
     # Pakete vorab laden: Waehrend des Wechsels laeuft kein Daemon, und ohne Daemon gibt es keinen
     # eingebauten DNS zwischen den Containern (VM 370: Nextcloud fand seine Datenbank 20 s nicht).
     - name: docker-ce vorab herunterladen (kuerzere Luecke ohne Daemon)
-      ansible.builtin.apt:
-        name: "{{ docker_packages }}"
-        state: present
-        download_only: true
+      ansible.builtin.command: apt-get install -y -q --download-only {{ docker_packages | join(' ') }}
+      changed_when: false
 
     # live-restore zuerst im laufenden docker.io einschalten (Reload, kein Neustart). Dann laufen
     # die Container beim Paketwechsel weiter und der neue Daemon uebernimmt sie (LXC 380, 2026-11-06).
@@ -118,6 +116,11 @@
       ansible.builtin.shell: docker image ls -q --no-trunc | sort -u | wc -l
       register: docker_images_before
       changed_when: false
+
+    # Ab hier wird getauscht. Nur danach darf der Rueckweg Docker anfassen.
+    - name: Paketwechsel beginnt
+      ansible.builtin.set_fact:
+        docker_swap_started: true
 
     - name: Docker vor dem Paketwechsel ganz stoppen (Dienst und Socket)
       ansible.builtin.systemd_service:
@@ -179,6 +182,11 @@
       failed_when: docker_images_after.stdout | int < docker_images_before.stdout | int
 
   rescue:
+    - name: Abbruch vor dem Paketwechsel, Docker bleibt unangetastet
+      ansible.builtin.fail:
+        msg: "Umstellung vor dem Paketwechsel gescheitert, an Docker wurde nichts geaendert. Ausgabe der fehlgeschlagenen Aufgabe pruefen."
+      when: not (docker_swap_started | default(false))
+
     - name: Rueckweg auf docker.io
       ansible.builtin.apt:
         name: "{{ docker_packages }}"
