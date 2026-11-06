@@ -15,18 +15,27 @@
     update_cache: true
     cache_valid_time: 3600
 
+- name: Paketstand lesen
+  ansible.builtin.package_facts:
+
+# Zeitsync: vorhandenes chrony behalten (Standard ab Ubuntu 25.10), sonst systemd-timesyncd.
+# In LXCs kommt die Zeit vom Host.
+- name: Zeitdienst festlegen
+  ansible.builtin.set_fact:
+    baseline_timesync: "{{ 'chrony' if 'chrony' in ansible_facts.packages else 'systemd-timesyncd' }}"
+
 - name: Pakete nur fuer VMs
   ansible.builtin.apt:
-    name: [qemu-guest-agent, systemd-timesyncd]
+    name: [qemu-guest-agent, "{{ baseline_timesync }}"]
     state: present
   when: not baseline_is_lxc
 
-- name: Guest Agent und fstrim auf VMs
+- name: Guest Agent, fstrim und Zeitdienst auf VMs
   ansible.builtin.systemd_service:
     name: "{{ item }}"
     enabled: true
     state: started
-  loop: [qemu-guest-agent, fstrim.timer, systemd-timesyncd]
+  loop: [qemu-guest-agent, fstrim.timer, "{{ 'chrony' if baseline_timesync == 'chrony' else 'systemd-timesyncd' }}"]
   when: not baseline_is_lxc
 
 - name: Ordner fuer journald-Drop-ins
