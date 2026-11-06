@@ -98,6 +98,12 @@
       register: docker_images_before
       changed_when: false
 
+    - name: Docker vor dem Paketwechsel ganz stoppen (Dienst und Socket)
+      ansible.builtin.systemd_service:
+        name: "{{ item }}"
+        state: stopped
+      loop: [docker.service, docker.socket]
+
     - name: Ubuntu-Pakete entfernen (Daten bleiben)
       ansible.builtin.apt:
         name: "{{ docker_ubuntu_packages }}"
@@ -108,11 +114,19 @@
         name: "{{ docker_packages }}"
         state: present
 
-    - name: Docker laeuft
+    # Ohne frisches Socket startet dockerd (-H fd://) nicht: "no sockets found via socket activation"
+    - name: Units neu laden und Fehlerzaehler zuruecksetzen
+      ansible.builtin.shell: |
+        systemctl daemon-reload
+        systemctl stop docker.service docker.socket || true
+        systemctl reset-failed docker.service docker.socket containerd.service || true
+
+    - name: Docker-Socket und Docker starten
       ansible.builtin.systemd_service:
-        name: docker
+        name: "{{ item }}"
         enabled: true
         state: started
+      loop: [containerd.service, docker.socket, docker.service]
 
     - name: Vorher laufende Container wieder starten
       ansible.builtin.command: docker start {{ docker_running_before.stdout_lines | join(' ') }}
@@ -147,7 +161,10 @@
 
     - name: Container nach dem Rueckweg starten
       ansible.builtin.shell: |
-        systemctl start docker
+        systemctl daemon-reload
+        systemctl stop docker.service docker.socket || true
+        systemctl reset-failed docker.service docker.socket || true
+        systemctl start docker.socket docker.service
         {% if docker_running_before.stdout_lines | default([]) | length > 0 %}
         docker start {{ docker_running_before.stdout_lines | join(' ') }}
         {% endif %}
