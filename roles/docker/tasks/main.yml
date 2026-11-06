@@ -127,14 +127,24 @@
         name: "{{ docker_packages }}"
         state: present
 
-    # Ohne frisches Socket startet dockerd (-H fd://) nicht: "no sockets found via socket activation"
-    - name: Units neu laden und Fehlerzaehler zuruecksetzen
+    # Das Paket startet Docker selbst. Nur wenn es danach nicht antwortet, Socket und Dienst frisch
+    # starten (LXC 380: "no sockets found via socket activation"). Jeder Daemon-Start baut die
+    # Portweiterleitungen neu auf, das kostet etwa eine Sekunde, deshalb nicht unnoetig neu starten.
+    - name: Antwortet Docker nach der Installation?
+      ansible.builtin.command: docker info --format '{{ '{{' }}.ServerVersion{{ '}}' }}'
+      register: docker_after_install
+      changed_when: false
+      failed_when: false
+
+    - name: Socket und Dienst frisch starten, falls nicht
       ansible.builtin.shell: |
         systemctl daemon-reload
         systemctl stop docker.service docker.socket || true
         systemctl reset-failed docker.service docker.socket containerd.service || true
+        systemctl start containerd.service docker.socket docker.service
+      when: docker_after_install.rc != 0
 
-    - name: Docker-Socket und Docker starten
+    - name: Docker beim Start aktiviert
       ansible.builtin.systemd_service:
         name: "{{ item }}"
         enabled: true
