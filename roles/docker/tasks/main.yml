@@ -179,6 +179,19 @@
       changed_when: false
       when: docker_running_before.stdout_lines | length > 0
 
+    # Der neue Daemon legt ein neues Socket an. Container, die /var/run/docker.sock als Datei
+    # einbinden, haengen sonst am alten (Edge 2026-11-06: socket-proxy 3 h mit 503, Traefik
+    # sah keine Label-Aenderungen mehr).
+    - name: Container mit eingebundenem Docker-Socket neu starten
+      ansible.builtin.shell: |
+        for id in $(docker ps -q); do
+          if docker inspect -f '{{ '{{' }}range .Mounts{{ '}}' }}{{ '{{' }}.Source{{ '}}' }} {{ '{{' }}end{{ '}}' }}' "$id" | grep -qE '(^| )/(var/)?run/docker.sock( |$)'; then
+            docker restart "$id" >/dev/null && docker inspect -f '{{ '{{' }}.Name{{ '}}' }}' "$id"
+          fi
+        done
+      register: docker_sock_restart
+      changed_when: docker_sock_restart.stdout | length > 0
+
     - name: Keine Images verloren
       ansible.builtin.shell: docker image ls -q --no-trunc | sort -u | wc -l
       register: docker_images_after
