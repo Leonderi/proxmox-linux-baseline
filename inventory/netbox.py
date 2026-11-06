@@ -62,9 +62,10 @@ def refresh():
 
 
 def load():
-    src = refresh() or FALLBACK
-    data = json.loads(src.read_text())
-    log(f"Quelle {src} (Stand {data.get('generated', '?')})")
+    fresh = refresh()
+    data = json.loads((fresh or FALLBACK).read_text())
+    if not fresh:
+        log(f"Quelle {FALLBACK} (Stand {data.get('generated', '?')})")
     return data
 
 

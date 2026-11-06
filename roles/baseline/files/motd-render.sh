@@ -86,8 +86,8 @@ tk_motd_main() {
     mem=$(free -m | awk '/^Mem:/ { u=$3; t=$2; f=(t >= 10240) ? "%.0fG/%.0fG" : "%dM/%dM"; if (t >= 10240) { u/=1024; t/=1024 } printf f, u, t }')
     disks=$(tk_disks | awk '{ printf "%s%s %s %%", (NR > 1 ? " · " : ""), $1, $2 }')
 
-    printf '\n  %sSystem  %s  %s %s·%s up %s %s·%s Load %s\n' "$C_L" "$C_R" "$distro" "$C_D" "$C_R" "$(tk_human_uptime)" "$C_D" "$C_R" "$(cut -d' ' -f1 /proc/loadavg)"
-    printf '  %sSpeicher%s  RAM %s %s·%s %s\n' "$C_L" "$C_R" "$mem" "$C_D" "$C_R" "$disks"
+    printf '\n  %sSystem  %s %s %s·%s up %s %s·%s Load %s\n' "$C_L" "$C_R" "$distro" "$C_D" "$C_R" "$(tk_human_uptime)" "$C_D" "$C_R" "$(cut -d' ' -f1 /proc/loadavg)"
+    printf '  %sSpeicher%s RAM %s %s·%s %s\n' "$C_L" "$C_R" "$mem" "$C_D" "$C_R" "$disks"
 
     if total=$(tk_docker ps -aq | wc -l) && ((total > 0)); then
         running=$(tk_docker ps -q | wc -l)
@@ -97,9 +97,9 @@ tk_motd_main() {
         else
             docker_line="${C_W}$running/$total laufen, $unhealthy ungesund${C_R}"
         fi
-        printf '  %sDocker  %s  %s\n' "$C_L" "$C_R" "$docker_line"
+        printf '  %sDocker  %s %s\n' "$C_L" "$C_R" "$docker_line"
     elif command -v docker >/dev/null 2>&1 && ! tk_docker info >/dev/null; then
-        printf '  %sDocker  %s  %skein Zugriff (Gruppe docker, neu anmelden)%s\n' "$C_L" "$C_R" "$C_D" "$C_R"
+        printf '  %sDocker  %s %skein Zugriff (Gruppe docker, neu anmelden)%s\n' "$C_L" "$C_R" "$C_D" "$C_R"
     fi
 
     problems=$(tk_motd_problems | paste -sd'|' | sed 's/|/ · /g')
