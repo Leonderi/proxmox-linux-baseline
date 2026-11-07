@@ -1,0 +1,13 @@
+---
+# sops und age fuer Hosts, die Stacks aus dem Repo stacks entschluesseln, und fuer Arbeitsplaetze.
+#
+#   ansible-playbook playbooks/sops.yml -e target=ops-core
+#   ansible-playbook playbooks/sops.yml -e target=ops-devbox -e sops_host_key=false
+#
+# Der private age-Schluessel bleibt auf dem Host (/root/.config/sops/age/keys.txt) und gehoert
+# zusaetzlich nach Vaultwarden. Ohne ihn lassen sich die Stacks dieses Hosts nicht mehr entschluesseln.
+- name: sops
+  hosts: "{{ target }}"
+  become: true
+  roles:
+    - sops

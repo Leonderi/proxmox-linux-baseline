@@ -1,0 +1,9 @@
+---
+# sops fuer verschluesselte .env-Dateien im Repo stacks, age als Schluesselformat.
+# Version und Pruefsumme aus sops-v<version>.checksums.txt des offiziellen Releases.
+sops_version: "3.13.3"
+sops_sha256: "e5bec3346a873ae91d871550f3e698c1aad962aff462a080e40f25fde17fef6b"
+sops_cache_dir: "{{ lookup('env', 'HOME') }}/.cache/tk-baseline"
+# age-Schluessel des Hosts fuer root anlegen (Gaeste, die Stacks entschluesseln). Privat bleibt er
+# auf dem Host, der oeffentliche Teil kommt in .sops.yaml des Repos stacks.
+sops_host_key: true

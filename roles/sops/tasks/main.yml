@@ -1,0 +1,59 @@
+---
+- name: sops laden (Steuerrechner, mit Pruefsumme)
+  ansible.builtin.get_url:
+    url: "https://github.com/getsops/sops/releases/download/v{{ sops_version }}/sops-v{{ sops_version }}.linux.amd64"
+    dest: "{{ sops_cache_dir }}/sops-{{ sops_version }}"
+    checksum: "sha256:{{ sops_sha256 }}"
+    mode: "0644"
+  delegate_to: localhost
+  become: false
+  run_once: true
+  check_mode: false
+
+- name: age installieren
+  ansible.builtin.apt:
+    name: age
+    state: present
+
+- name: sops installieren
+  ansible.builtin.copy:
+    src: "{{ sops_cache_dir }}/sops-{{ sops_version }}"
+    dest: /usr/local/bin/sops
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Verzeichnis fuer den age-Schluessel
+  ansible.builtin.file:
+    path: /root/.config/sops/age
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+  when: sops_host_key
+
+- name: age-Schluessel des Hosts anlegen (nur wenn keiner da ist)
+  ansible.builtin.command: age-keygen -o /root/.config/sops/age/keys.txt
+  args:
+    creates: /root/.config/sops/age/keys.txt
+  when: sops_host_key
+
+- name: Rechte des age-Schluessels
+  ansible.builtin.file:
+    path: /root/.config/sops/age/keys.txt
+    owner: root
+    group: root
+    mode: "0600"
+  when: sops_host_key and not ansible_check_mode
+
+- name: Oeffentlichen age-Schluessel lesen
+  ansible.builtin.command: age-keygen -y /root/.config/sops/age/keys.txt
+  register: sops_age_pub
+  changed_when: false
+  check_mode: false
+  when: sops_host_key
+
+- name: Oeffentlicher age-Schluessel (fuer .sops.yaml)
+  ansible.builtin.debug:
+    msg: "{{ inventory_hostname }}: {{ sops_age_pub.stdout }}"
+  when: sops_host_key
